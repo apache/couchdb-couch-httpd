@@ -15,6 +15,7 @@
 
 -include_lib("couch/include/couch_db.hrl").
 -include_lib("ibrowse/include/ibrowse.hrl").
+-include("couch_httpd.hrl").
 
 -define(TIMEOUT, infinity).
 -define(PKT_SIZE, 4096).

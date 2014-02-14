@@ -18,6 +18,7 @@
 -module(couch_httpd_rewrite).
 -export([handle_rewrite_req/3]).
 -include_lib("couch/include/couch_db.hrl").
+-include("couch_httpd.hrl").
 
 -define(SEPARATOR, $\/).
 -define(MATCH_ALL, {bind, <<"*">>}).

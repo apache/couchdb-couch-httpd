@@ -17,6 +17,7 @@
          handle_view_changes/3]).
 
 -include_lib("couch/include/couch_db.hrl").
+-include("couch_httpd.hrl").
 
 handle_changes_req(#httpd{method='POST'}=Req, Db) ->
     couch_httpd:validate_ctype(Req, "application/json"),

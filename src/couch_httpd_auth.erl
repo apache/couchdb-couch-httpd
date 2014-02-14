@@ -12,9 +12,10 @@
 
 -module(couch_httpd_auth).
 -include_lib("couch/include/couch_db.hrl").
+-include("couch_httpd.hrl").
 
 -export([default_authentication_handler/1,special_test_authentication_handler/1]).
--export([cookie_authentication_handler/1]).
+-export([cookie_authentication_handler/1])
 -export([null_authentication_handler/1]).
 -export([proxy_authentication_handler/1, proxy_authentification_handler/1]).
 -export([cookie_auth_header/2]).
