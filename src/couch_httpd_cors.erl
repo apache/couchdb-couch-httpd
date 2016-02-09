@@ -159,17 +159,24 @@ handle_preflight_request(Req, Config, Origin) ->
 
 
 headers(Req, RequestHeaders) ->
-    case get_origin(Req) of
-        undefined ->
-            %% If the Origin header is not present terminate
-            %% this set of steps. The request is outside the scope
-            %% of this specification.
-            %% http://www.w3.org/TR/cors/#resource-processing-model
-            RequestHeaders;
-        Origin ->
-            headers(Req, RequestHeaders, Origin, get_cors_config(Req))
+    case is_preflight_response(RequestHeaders) of
+        false ->
+            case get_origin(Req) of
+                undefined ->
+                    %% If the Origin header is not present terminate
+                    %% this set of steps. The request is outside the scope
+                    %% of this specification.
+                    %% http://www.w3.org/TR/cors/#resource-processing-model
+                    RequestHeaders;
+                Origin ->
+                    headers(Req, RequestHeaders, Origin, get_cors_config(Req))
+            end;
+        true ->
+            RequestHeaders
     end.
 
+is_preflight_response(Headers) ->
+    lists:keymember("Access-Control-Allow-Origin", 1, Headers).
 
 headers(_Req, RequestHeaders, undefined, _Config) ->
     RequestHeaders;
@@ -272,28 +279,31 @@ allow_credentials(Config, Origin) ->
     get_origin_config(Config, Origin, <<"allow_credentials">>,
         ?CORS_DEFAULT_ALLOW_CREDENTIALS).
 
-get_cors_config(#httpd{cors_config = undefined}) ->
+get_cors_config(#httpd{cors_config = undefined, mochi_req = MochiReq}) ->
+    Host = couch_httpd_vhost:host(MochiReq),
+
     EnableCors = config:get("httpd", "enable_cors", "false") =:= "true",
     AllowCredentials = config:get("cors", "credentials", "false") =:= "true",
-    AllowHeaders = case config:get("cors", "headers", undefined) of
+
+    AllowHeaders = case cors_config(Host, "headers", undefined) of
         undefined ->
             ?SUPPORTED_HEADERS;
         AllowHeaders0 ->
             [to_lower(H) || H <- split_list(AllowHeaders0)]
     end,
-    AllowMethods = case config:get("cors", "methods", undefined) of
+    AllowMethods = case cors_config(Host, "methods", undefined) of
         undefined ->
             ?SUPPORTED_METHODS;
         AllowMethods0 ->
             split_list(AllowMethods0)
     end,
-    ExposedHeaders = case config:get("cors", "exposed_headers", undefined) of
+    ExposedHeaders = case cors_config(Host, "exposed_headers", undefined) of
         undefined ->
             ?COUCH_HEADERS;
         ExposedHeaders0 ->
             [to_lower(H) || H <- split_list(ExposedHeaders0)]
     end,
-    Origins0 = binary_split_list(config:get("cors", "origins", [])),
+    Origins0 = binary_split_list(cors_config(Host, "origins", [])),
     Origins = [{O, {[]}} || O <- Origins0],
     [
         {<<"enable_cors">>, EnableCors},
@@ -305,6 +315,35 @@ get_cors_config(#httpd{cors_config = undefined}) ->
     ];
 get_cors_config(#httpd{cors_config = Config}) ->
     Config.
+
+cors_config(Host, Key, Default) ->
+    config:get(cors_section(Host), Key,
+                     config:get("cors", Key, Default)).
+
+cors_section(Host0) ->
+    {Host, _Port} = split_host_port(Host0),
+    "cors:" ++ Host.
+
+split_host_port(HostAsString) ->
+    % split at semicolon ":"
+    Split = string:rchr(HostAsString, $:),
+    split_host_port(HostAsString, Split).
+
+split_host_port(HostAsString, 0) ->
+    % no semicolon
+    {HostAsString, '*'};
+split_host_port(HostAsString, N) ->
+    HostPart = string:substr(HostAsString, 1, N-1),
+    % parse out port
+    % is there a nicer way?
+    case (catch erlang:list_to_integer(string:substr(HostAsString,
+                    N+1, length(HostAsString)))) of
+    {'EXIT', _} ->
+        {HostAsString, '*'};
+    Port ->
+        {HostPart, Port}
+    end.
+
 
 is_cors_enabled(Config) ->
     case get(disable_couch_httpd_cors) of
