@@ -283,7 +283,7 @@ get_cors_config(#httpd{cors_config = undefined, mochi_req = MochiReq}) ->
     Host = couch_httpd_vhost:host(MochiReq),
 
     EnableCors = config:get("httpd", "enable_cors", "false") =:= "true",
-    AllowCredentials = config:get("cors", "credentials", "false") =:= "true",
+    AllowCredentials = cors_config(Host, "credentials", "false") =:= "true",
 
     AllowHeaders = case cors_config(Host, "headers", undefined) of
         undefined ->
