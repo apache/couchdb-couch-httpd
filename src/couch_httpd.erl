@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(chttpd).
+-module(couch_httpd).
 -include_lib("couch/include/couch_db.hrl").
 -include_lib("chttpd/include/chttpd.hrl").
 
