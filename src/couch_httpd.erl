@@ -249,7 +249,7 @@ handle_request_int(MochiReq) ->
 
 before_request(HttpReq) ->
     try
-        chttpd_plugin:before_request(HttpReq)
+        couch_httpd_plugin:before_request(HttpReq)
     catch Tag:Error ->
         {error, catch_error(HttpReq, Tag, Error)}
     end.
@@ -257,7 +257,7 @@ before_request(HttpReq) ->
 after_request(HttpReq, HttpResp0) ->
     {ok, HttpResp1} =
         try
-            chttpd_plugin:after_request(HttpReq, HttpResp0)
+            couch_httpd_plugin:after_request(HttpReq, HttpResp0)
         catch _Tag:Error ->
             Stack = erlang:get_stacktrace(),
             send_error(HttpReq, {Error, nil, Stack}),
@@ -882,7 +882,7 @@ error_info(Error) ->
     maybe_handle_error({<<"unknown_error">>, Error}).
 
 maybe_handle_error(Error) ->
-    case chttpd_plugin:handle_error(Error) of
+    case couch_httpd_plugin:handle_error(Error) of
         {_Code, _Reason, _Description} = Result ->
             Result;
         {Err, Reason} ->
