@@ -200,7 +200,7 @@ handle_request_int(MochiReq) ->
         method = Method,
         path_parts = [list_to_binary(couch_httpd:unquote(Part))
                 || Part <- string:tokens(Path, "/")],
-        requested_path_parts = [?l2b(unquote(Part))
+        requested_path_parts = [?l2b(couch_httpd:unquote(Part))
                 || Part <- string:tokens(RequestedPath, "/")]
     },
 
@@ -248,7 +248,7 @@ after_request(HttpReq, HttpResp0) ->
             couch_httpd_plugin:after_request(HttpReq, HttpResp0)
         catch _Tag:Error ->
             Stack = erlang:get_stacktrace(),
-            send_error(HttpReq, {Error, nil, Stack}),
+            couch_httpd:send_error(HttpReq, {Error, nil, Stack}),
             {ok, HttpResp0#httpd_resp{status = aborted}}
         end,
     HttpResp2 = update_stats(HttpReq, HttpResp1),
@@ -259,7 +259,7 @@ process_request(#httpd{mochi_req = MochiReq} = HttpReq) ->
     HandlerKey =
         case HttpReq#httpd.path_parts of
             [] -> <<>>;
-            [Key|_] -> ?l2b(quote(Key))
+            [Key|_] -> ?l2b(couch_httpd:quote(Key))
         end,
 
     RawUri = MochiReq:get(raw_path),
@@ -291,7 +291,7 @@ catch_error(_HttpReq, throw, {http_head_abort, Resp}) ->
 catch_error(_HttpReq, throw, {http_abort, Resp, Reason}) ->
     {aborted, Resp, Reason};
 catch_error(HttpReq, throw, {invalid_json, _}) ->
-    send_error(HttpReq, {bad_request, "invalid UTF-8 JSON"});
+    couch_httpd:send_error(HttpReq, {bad_request, "invalid UTF-8 JSON"});
 catch_error(HttpReq, exit, {mochiweb_recv_error, E}) ->
     #httpd{
         mochi_req = MochiReq,
@@ -305,13 +305,13 @@ catch_error(HttpReq, exit, {mochiweb_recv_error, E}) ->
         E]),
     exit(normal);
 catch_error(HttpReq, exit, {uri_too_long, _}) ->
-    send_error(HttpReq, request_uri_too_long);
+    couch_httpd:send_error(HttpReq, request_uri_too_long);
 catch_error(HttpReq, exit, {body_too_large, _}) ->
-    send_error(HttpReq, request_entity_too_large);
+    couch_httpd:send_error(HttpReq, request_entity_too_large);
 catch_error(HttpReq, throw, Error) ->
-    send_error(HttpReq, Error);
+    couch_httpd:send_error(HttpReq, Error);
 catch_error(HttpReq, error, database_does_not_exist) ->
-    send_error(HttpReq, database_does_not_exist);
+    couch_httpd:send_error(HttpReq, database_does_not_exist);
 catch_error(HttpReq, Tag, Error) ->
     Stack = erlang:get_stacktrace(),
     % TODO improve logging and metrics collection for client disconnects
@@ -319,7 +319,7 @@ catch_error(HttpReq, Tag, Error) ->
         {exit, normal, [{mochiweb_request, send, _, _} | _]} ->
             exit(normal); % Client disconnect (R15+)
         _Else ->
-            send_error(HttpReq, {Error, nil, Stack})
+            couch_httpd:send_error(HttpReq, {Error, nil, Stack})
     end.
 
 split_response({ok, #delayed_resp{resp=Resp}}) ->
@@ -401,7 +401,7 @@ fix_uri(Req, Props, Type) ->
         true ->
             Props;
         false ->
-            Uri = make_uri(Req, quote(Uri0)),
+            Uri = make_uri(Req, couch_httpd:quote(Uri0)),
             [{Type,Uri}|proplists:delete(Type,Props)]
         end
     end.
@@ -426,7 +426,7 @@ make_uri(Req, Raw) ->
     Url = list_to_binary(["http://", config:get("httpd", "bind_address"),
                           ":", Port, "/", Raw]),
     Headers = [
-        {<<"authorization">>, ?l2b(header_value(Req,"authorization",""))},
+        {<<"authorization">>, ?l2b(couch_httpd:header_value(Req,"authorization",""))},
         {<<"cookie">>, ?l2b(extract_cookie(Req))}
     ],
     {[{<<"url">>,Url}, {<<"headers">>,{Headers}}]}.
