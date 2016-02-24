@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(chttpd_config_listener).
+-module(couch_httpd_config_listener).
 -vsn(2).
 -behaviour(config_listener).
 
