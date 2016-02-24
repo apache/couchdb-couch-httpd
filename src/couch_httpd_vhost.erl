@@ -391,7 +391,7 @@ load_conf() ->
 
     %% build vhosts handler fun
     DefaultVHostFun = "{couch_httpd_vhost, redirect_to_vhost}",
-    Fun = couch_httpd:make_arity_2_fun(config:get("httpd",
-            "redirect_vhost_handler", DefaultVHostFun)),
+    Fun = couch_httpd_util:fun_from_spec(config:get("httpd",
+            "redirect_vhost_handler", DefaultVHostFun), 2),
 
     {VHostGlobals, VHosts, Fun}.

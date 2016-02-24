@@ -80,7 +80,7 @@ start_link(https) ->
             case config:get("ssl", "verify_fun", undefined) of
                 undefined -> [];
                 SpecStr ->
-                    [{verify_fun, make_arity_3_fun(SpecStr)}]
+                    [{verify_fun, couch_httpd_util:fun_from_spec(SpecStr, 3)}]
             end
     end,
     SslOpts = ServerOpts ++ ClientOpts,
@@ -97,23 +97,24 @@ start_link(Name, Options) ->
                   end,
     ok = validate_bind_address(BindAddress),
     DefaultSpec = "{couch_httpd_db, handle_request}",
-    DefaultFun = make_arity_1_fun(
-        config:get("httpd", "default_handler", DefaultSpec)
+    DefaultFun = couch_httpd_util:fun_from_spec(
+        config:get("httpd", "default_handler", DefaultSpec),
+        1
     ),
 
     UrlHandlersList = lists:map(
         fun({UrlKey, SpecStr}) ->
-            {?l2b(UrlKey), make_arity_1_fun(SpecStr)}
+            {?l2b(UrlKey), couch_httpd_util:fun_from_spec(SpecStr, 1)}
         end, config:get("httpd_global_handlers")),
 
     DbUrlHandlersList = lists:map(
         fun({UrlKey, SpecStr}) ->
-            {?l2b(UrlKey), make_arity_2_fun(SpecStr)}
+            {?l2b(UrlKey), couch_httpd_util:fun_from_spec(SpecStr, 2)}
         end, config:get("httpd_db_handlers")),
 
     DesignUrlHandlersList = lists:map(
         fun({UrlKey, SpecStr}) ->
-            {?l2b(UrlKey), make_arity_3_fun(SpecStr)}
+            {?l2b(UrlKey), couch_httpd_util:fun_from_spec(SpecStr, 3)}
         end, config:get("httpd_design_handlers")),
 
     UrlHandlers = dict:from_list(UrlHandlersList),
@@ -167,7 +168,7 @@ set_auth_handlers() ->
     AuthenticationSrcs = make_fun_spec_strs(
         config:get("httpd", "authentication_handlers", "")),
     AuthHandlers = lists:map(
-        fun(A) -> {auth_handler_name(A), make_arity_1_fun(A)} end, AuthenticationSrcs),
+        fun(A) -> {auth_handler_name(A), couch_httpd_util:fun_from_spec(A, 1)} end, AuthenticationSrcs),
     AuthenticationFuns = AuthHandlers ++ [
         {<<"local">>, fun couch_httpd_auth:party_mode_handler/1} %% should be last
     ],

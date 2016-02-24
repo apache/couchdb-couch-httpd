@@ -86,7 +86,7 @@ start_link(https) ->
             case config:get("ssl", "verify_fun", undefined) of
                 undefined -> [];
                 SpecStr ->
-                    [{verify_fun, couch_httpd:make_arity_3_fun(SpecStr)}]
+                    [{verify_fun, couch_httpd_util:fun_from_spec(SpecStr, 3)}]
             end
     end,
     SslOpts = ServerOpts ++ ClientOpts,
