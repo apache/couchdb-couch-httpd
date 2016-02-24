@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(chttpd_external).
+-module(couch_httpd_external).
 
 -export([handle_external_req/2, handle_external_req/3]).
 -export([send_external_response/2]).
