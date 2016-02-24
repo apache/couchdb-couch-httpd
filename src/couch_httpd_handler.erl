@@ -48,53 +48,11 @@ start_link(http) ->
 
 start_link(https) ->
     Port = config:get("ssl", "port", "6984"),
-    {ok, Ciphers} = couch_util:parse_term(config:get("ssl", "ciphers", undefined)),
-    {ok, Versions} = couch_util:parse_term(config:get("ssl", "tls_versions", undefined)),
-    {ok, SecureRenegotiate} = couch_util:parse_term(config:get("ssl", "secure_renegotiate", undefined)),
-    ServerOpts0 =
-        [{cacertfile, config:get("ssl", "cacert_file", undefined)},
-         {keyfile, config:get("ssl", "key_file", undefined)},
-         {certfile, config:get("ssl", "cert_file", undefined)},
-         {password, config:get("ssl", "password", undefined)},
-         {secure_renegotiate, SecureRenegotiate},
-         {versions, Versions},
-         {ciphers, Ciphers}],
-
-    case (couch_util:get_value(keyfile, ServerOpts0) == undefined orelse
-        couch_util:get_value(certfile, ServerOpts0) == undefined) of
-        true ->
-            io:format("SSL enabled but PEM certificates are missing.", []),
-            throw({error, missing_certs});
-        false ->
-            ok
-    end,
-
-    ServerOpts = [Opt || {_, V}=Opt <- ServerOpts0, V /= undefined],
-
-    ClientOpts = case config:get("ssl", "verify_ssl_certificates", "false") of
-        "false" ->
-            [];
-        "true" ->
-            FailIfNoPeerCert = case config:get("ssl", "fail_if_no_peer_cert", "false") of
-            "false" -> false;
-            "true" -> true
-            end,
-            [{depth, list_to_integer(config:get("ssl",
-                "ssl_certificate_max_depth", "1"))},
-             {fail_if_no_peer_cert, FailIfNoPeerCert},
-             {verify, verify_peer}] ++
-            case config:get("ssl", "verify_fun", undefined) of
-                undefined -> [];
-                SpecStr ->
-                    [{verify_fun, couch_httpd_util:fun_from_spec(SpecStr, 3)}]
-            end
-    end,
-    SslOpts = ServerOpts ++ ClientOpts,
 
     Options =
         [{port, Port},
          {ssl, true},
-         {ssl_opts, SslOpts}],
+         {ssl_opts, ssl_options()}],
     start_link(https, Options).
 
 start_link(Name, Options) ->
@@ -469,3 +427,47 @@ maybe_set_handler(Else, _) ->
 
 increment_method_stats(Method) ->
     couch_stats:increment_counter([couchdb, httpd_request_methods, Method]).
+
+ssl_options() ->
+    {ok, Ciphers} = couch_util:parse_term(config:get("ssl", "ciphers", undefined)),
+    {ok, Versions} = couch_util:parse_term(config:get("ssl", "tls_versions", undefined)),
+    {ok, SecureRenegotiate} = couch_util:parse_term(config:get("ssl", "secure_renegotiate", undefined)),
+    ServerOpts0 =
+        [{cacertfile, config:get("ssl", "cacert_file", undefined)},
+         {keyfile, config:get("ssl", "key_file", undefined)},
+         {certfile, config:get("ssl", "cert_file", undefined)},
+         {password, config:get("ssl", "password", undefined)},
+         {secure_renegotiate, SecureRenegotiate},
+         {versions, Versions},
+         {ciphers, Ciphers}],
+
+    case (couch_util:get_value(keyfile, ServerOpts0) == undefined orelse
+        couch_util:get_value(certfile, ServerOpts0) == undefined) of
+        true ->
+            io:format("SSL enabled but PEM certificates are missing.", []),
+            throw({error, missing_certs});
+        false ->
+            ok
+    end,
+
+    ServerOpts = [Opt || {_, V}=Opt <- ServerOpts0, V /= undefined],
+
+    ClientOpts = case config:get("ssl", "verify_ssl_certificates", "false") of
+        "false" ->
+            [];
+        "true" ->
+            FailIfNoPeerCert = case config:get("ssl", "fail_if_no_peer_cert", "false") of
+            "false" -> false;
+            "true" -> true
+            end,
+            [{depth, list_to_integer(config:get("ssl",
+                "ssl_certificate_max_depth", "1"))},
+             {fail_if_no_peer_cert, FailIfNoPeerCert},
+             {verify, verify_peer}] ++
+            case config:get("ssl", "verify_fun", undefined) of
+                undefined -> [];
+                SpecStr ->
+                    [{verify_fun, couch_httpd_util:fun_from_spec(SpecStr, 3)}]
+            end
+    end,
+    ServerOpts ++ ClientOpts.
