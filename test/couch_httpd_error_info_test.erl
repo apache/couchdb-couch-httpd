@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(chttpd_error_info_tests).
+-module(couch_httpd_error_info_test).
 
 -include_lib("eunit/include/eunit.hrl").
 
