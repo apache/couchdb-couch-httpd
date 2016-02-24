@@ -26,7 +26,7 @@
 
 
 -include_lib("couch/include/couch_db.hrl").
--include_lib("chttpd/include/couch_httpd_cors.hrl").
+-include_lib("couch_httpd/include/couch_httpd_cors.hrl").
 
 
 %% http://www.w3.org/TR/cors/#resource-preflight-requests
