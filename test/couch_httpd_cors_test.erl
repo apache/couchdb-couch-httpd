@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(chttpd_cors_test).
+-module(couch_httpd_cors_test).
 
 
 -include_lib("couch/include/couch_db.hrl").
