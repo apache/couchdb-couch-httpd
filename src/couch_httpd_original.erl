@@ -19,7 +19,7 @@
 -export([path/1,absolute_uri/2,body_length/1]).
 -export([verify_is_server_admin/1,unquote/1,quote/1,recv/2,recv_chunked/4,error_info/1]).
 -export([make_fun_spec_strs/1]).
--export([make_arity_1_fun/1, make_arity_2_fun/1, make_arity_3_fun/1]).
+
 -export([parse_form/1,json_body/1,json_body_obj/1,body/1]).
 -export([doc_etag/1, make_etag/1, etag_match/2, etag_respond/3, etag_maybe/2]).
 -export([primary_header_value/2,partition/1,serve_file/3,serve_file/4, server_header/0]).
@@ -176,31 +176,6 @@ set_auth_handlers() ->
 auth_handler_name(SpecStr) ->
     lists:nth(?HANDLER_NAME_IN_MODULE_POS, re:split(SpecStr, "[\\W_]", [])).
 
-% SpecStr is a string like "{my_module, my_fun}"
-%  or "{my_module, my_fun, <<"my_arg">>}"
-make_arity_1_fun(SpecStr) ->
-    case couch_util:parse_term(SpecStr) of
-    {ok, {Mod, Fun, SpecArg}} ->
-        fun(Arg) -> Mod:Fun(Arg, SpecArg) end;
-    {ok, {Mod, Fun}} ->
-        fun(Arg) -> Mod:Fun(Arg) end
-    end.
-
-make_arity_2_fun(SpecStr) ->
-    case couch_util:parse_term(SpecStr) of
-    {ok, {Mod, Fun, SpecArg}} ->
-        fun(Arg1, Arg2) -> Mod:Fun(Arg1, Arg2, SpecArg) end;
-    {ok, {Mod, Fun}} ->
-        fun(Arg1, Arg2) -> Mod:Fun(Arg1, Arg2) end
-    end.
-
-make_arity_3_fun(SpecStr) ->
-    case couch_util:parse_term(SpecStr) of
-    {ok, {Mod, Fun, SpecArg}} ->
-        fun(Arg1, Arg2, Arg3) -> Mod:Fun(Arg1, Arg2, Arg3, SpecArg) end;
-    {ok, {Mod, Fun}} ->
-        fun(Arg1, Arg2, Arg3) -> Mod:Fun(Arg1, Arg2, Arg3) end
-    end.
 
 % SpecStr is "{my_module, my_fun}, {my_module2, my_fun2}"
 make_fun_spec_strs(SpecStr) ->
