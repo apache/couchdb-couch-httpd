@@ -15,30 +15,93 @@
 -include_lib("couch_httpd/include/couch_httpd.hrl").
 
 -export([
-    primary_header_value/2, header_value/2, header_value/3, qs_value/2,
-    qs_value/3, qs/1, qs_json_value/3, path/1, absolute_uri/2, body_length/1,
-    verify_is_server_admin/1, unquote/1, quote/1, recv/2, recv_chunked/4,
-    error_info/1, parse_form/1, json_body/1, json_body_obj/1, body/1,
-    doc_etag/1, make_etag/1, etag_respond/3, etag_match/2,
-    partition/1, serve_file/3, serve_file/4,
-    server_header/0, start_chunked_response/3,send_chunk/2,
-    start_response_length/4, send/2, start_json_response/2,
-    start_json_response/3, end_json_response/1, send_response/4,
-    send_method_not_allowed/2, send_error/2, send_error/4, send_redirect/2,
-    send_chunked_error/2, send_json/2,send_json/3,send_json/4,
-    validate_ctype/2]).
-
--export([start_delayed_json_response/2, start_delayed_json_response/3,
-    start_delayed_json_response/4,
-    start_delayed_chunked_response/3, start_delayed_chunked_response/4,
-    send_delayed_chunk/2, send_delayed_last_chunk/1,
-    send_delayed_error/2, end_delayed_json_response/1,
-    get_delayed_req/1]).
+    start_response_length/4,
+    start_chunked_response/3,
+    start_json_response/2,
+    start_json_response/3,
+    end_json_response/1
+]).
 
 -export([
-    chunked_response_buffer_size/0,
+    start_delayed_response/1,
+    start_delayed_chunked_response/3,
+    start_delayed_chunked_response/4,
+    start_delayed_json_response/2,
+    start_delayed_json_response/3,
+    start_delayed_json_response/4
+]).
+
+-export([
+    send_response/4,
+    send_json/2,
+    send_json/3,
+    send_json/4,
+    send_redirect/2,
+    send/2
+]).
+
+-export([
+    send_delayed_chunk/2,
+    send_delayed_last_chunk/1,
+    end_delayed_json_response/1,
     close_delayed_json_object/4
 ]).
+
+-export([
+    server_header/0,
+    send_chunk/2
+]).
+
+-export([
+    qs_value/2,
+    qs_value/3,
+    qs_json_value/3,
+    qs/1
+]).
+
+-export([
+    absolute_uri/2,
+    partition/1,
+    header_value/2,
+    header_value/3,
+    primary_header_value/2,
+    serve_file/3,
+    serve_file/4,
+    path/1,
+    unquote/1,
+    quote/1,
+    parse_form/1,
+    recv/2,
+    recv_chunked/4,
+    body_length/1,
+    body/1,
+    json_body/1,
+    json_body_obj/1,
+    verify_is_server_admin/1,
+    get_delayed_req/1,
+    chunked_response_buffer_size/0
+]).
+
+-export([
+    validate_ctype/2
+]).
+
+-export([
+    doc_etag/1,
+    make_etag/1,
+    etag_match/2,
+    etag_respond/3
+]).
+
+-export([
+    error_info/1,
+    send_error/2,
+    send_error/4,
+    send_chunked_error/2,
+    send_delayed_error/2,
+    send_method_not_allowed/2
+]).
+
 
 -record(delayed_resp, {
     start_fun,
@@ -49,8 +112,177 @@
     resp=nil
 }).
 
+start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Length) ->
+    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
+    Headers1 = Headers0 ++ server_header() ++
+	couch_httpd_auth:cookie_auth_header(Req, Headers0),
+    Headers2 = couch_httpd_cors:headers(Req, Headers1),
+    Resp = MochiReq:start_response_length({Code, Headers2, Length}),
+    case MochiReq:get(method) of
+    'HEAD' -> throw({http_head_abort, Resp});
+    _ -> ok
+    end,
+    {ok, Resp}.
 
-% Utilities
+start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0) ->
+    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
+    Headers1 = Headers0 ++ server_header() ++
+        couch_httpd_auth:cookie_auth_header(Req, Headers0),
+    Headers2 = couch_httpd_cors:headers(Req, Headers1),
+    Resp = MochiReq:respond({Code, Headers2, chunked}),
+    case MochiReq:get(method) of
+    'HEAD' -> throw({http_head_abort, Resp});
+    _ -> ok
+    end,
+    {ok, Resp}.
+
+start_json_response(Req, Code) ->
+    start_json_response(Req, Code, []).
+
+start_json_response(Req, Code, Headers0) ->
+    Headers1 = [timing(), reqid() | Headers0],
+    Headers2 = couch_httpd_cors:headers(Req, Headers1),
+    couch_httpd:start_json_response(Req, Code, Headers2).
+
+start_delayed_response(#delayed_resp{resp=nil}=DelayedResp) ->
+    #delayed_resp{
+        start_fun=StartFun,
+        req=Req,
+        code=Code,
+        headers=Headers,
+        first_chunk=FirstChunk
+    }=DelayedResp,
+    {ok, Resp} = StartFun(Req, Code, Headers),
+    case FirstChunk of
+        "" -> ok;
+        _ -> {ok, Resp} = send_chunk(Resp, FirstChunk)
+    end,
+    {ok, DelayedResp#delayed_resp{resp=Resp}};
+start_delayed_response(#delayed_resp{}=DelayedResp) ->
+    {ok, DelayedResp}.
+
+start_delayed_chunked_response(Req, Code, Headers) ->
+    start_delayed_chunked_response(Req, Code, Headers, "").
+
+start_delayed_chunked_response(Req, Code, Headers, FirstChunk) ->
+    {ok, #delayed_resp{
+        start_fun = fun start_chunked_response/3,
+        req = Req,
+        code = Code,
+        headers = Headers,
+        first_chunk = FirstChunk}}.
+
+start_delayed_json_response(Req, Code) ->
+    start_delayed_json_response(Req, Code, []).
+
+start_delayed_json_response(Req, Code, Headers) ->
+    start_delayed_json_response(Req, Code, Headers, "").
+
+start_delayed_json_response(Req, Code, Headers, FirstChunk) ->
+    {ok, #delayed_resp{
+        start_fun = fun start_json_response/3,
+        req = Req,
+        code = Code,
+        headers = Headers,
+        first_chunk = FirstChunk}}.
+
+send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Body) ->
+    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
+    Headers = Headers0 ++ server_header() ++
+	[timing(), reqid() | couch_httpd_auth:cookie_auth_header(Req, Headers0)],
+    {ok, MochiReq:respond({Code, Headers, Body})}.
+
+send_json(Req, Value) ->
+    send_json(Req, 200, Value).
+
+send_json(Req, Code, Value) ->
+    send_json(Req, Code, [], Value).
+
+send_json(Req, Code, Headers0, Value) ->
+    Headers1 = [timing(), reqid() | Headers0],
+    Headers2 = couch_httpd_cors:headers(Req, Headers1),
+    couch_httpd:send_json(Req, Code, Headers2, Value).
+
+send_redirect(Req, Path) ->
+    Headers0 = [{"Location", couch_httpd:absolute_uri(Req, Path)}],
+    Headers1 = couch_httpd_cors:headers(Req, Headers0),
+    send_response(Req, 301, Headers1, <<>>).
+
+send_delayed_chunk(#delayed_resp{}=DelayedResp, Chunk) ->
+    {ok, #delayed_resp{resp=Resp}=DelayedResp1} =
+        start_delayed_response(DelayedResp),
+    {ok, Resp} = send_chunk(Resp, Chunk),
+    {ok, DelayedResp1}.
+
+send_delayed_last_chunk(Req) ->
+    send_delayed_chunk(Req, []).
+
+end_delayed_json_response(#delayed_resp{}=DelayedResp) ->
+    {ok, #delayed_resp{resp=Resp}} =
+        start_delayed_response(DelayedResp),
+    end_json_response(Resp).
+
+close_delayed_json_object(Resp, Buffer, Terminator, 0) ->
+    % Use a separate chunk to close the streamed array to maintain strict
+    % compatibility with earlier versions. See COUCHDB-2724
+    {ok, R1} = couch_httpd:send_delayed_chunk(Resp, Buffer),
+    send_delayed_chunk(R1, Terminator);
+close_delayed_json_object(Resp, Buffer, Terminator, _Threshold) ->
+    send_delayed_chunk(Resp, [Buffer | Terminator]).
+
+end_json_response(Resp) ->
+    couch_httpd:end_json_response(Resp).
+
+send_error(_Req, {already_sent, Resp, _Error}) ->
+    {ok, Resp};
+
+send_error(Req, Error) ->
+    {Code, ErrorStr, ReasonStr} = error_info(Error),
+    {Code1, Headers} = error_headers(Req, Code, ErrorStr, ReasonStr),
+    send_error(Req, Code1, Headers, ErrorStr, ReasonStr, json_stack(Error)).
+
+send_error(Req, Code, ErrorStr, ReasonStr) ->
+    send_error(Req, Code, [], ErrorStr, ReasonStr, []).
+
+send_error(Req, Code, Headers, ErrorStr, ReasonStr, []) ->
+    send_json(Req, Code, Headers,
+        {[{<<"error">>,  ErrorStr},
+        {<<"reason">>, ReasonStr}]});
+send_error(Req, Code, Headers, ErrorStr, ReasonStr, Stack) ->
+    log_error_with_stack_trace({ErrorStr, ReasonStr, Stack}),
+    send_json(Req, Code, [stack_trace_id(Stack) | Headers],
+        {[{<<"error">>,  ErrorStr},
+        {<<"reason">>, ReasonStr} |
+        case Stack of [] -> []; _ -> [{<<"ref">>, stack_hash(Stack)}] end
+    ]}).
+
+% give the option for list functions to output html or other raw errors
+send_chunked_error(Resp, {_Error, {[{<<"body">>, Reason}]}}) ->
+    send_chunk(Resp, Reason),
+    send_chunk(Resp, []);
+
+send_chunked_error(Resp, Error) ->
+    Stack = json_stack(Error),
+    log_error_with_stack_trace(Error),
+    {Code, ErrorStr, ReasonStr} = error_info(Error),
+    JsonError = {[{<<"code">>, Code},
+        {<<"error">>,  ErrorStr},
+        {<<"reason">>, ReasonStr} |
+        case Stack of [] -> []; _ -> [{<<"ref">>, stack_hash(Stack)}] end
+    ]},
+    send_chunk(Resp, ?l2b([$\n,?JSON_ENCODE(JsonError),$\n])),
+    send_chunk(Resp, []).
+
+send_delayed_error(#delayed_resp{req=Req,resp=nil}=DelayedResp, Reason) ->
+    {Code, ErrorStr, ReasonStr} = error_info(Reason),
+    {ok, Resp} = send_error(Req, Code, ErrorStr, ReasonStr),
+    {ok, DelayedResp#delayed_resp{resp=Resp}};
+send_delayed_error(#delayed_resp{resp=Resp}, Reason) ->
+    log_error_with_stack_trace(Reason),
+    throw({http_abort, Resp, Reason}).
+
+%% =========
+%% Utilities
 
 partition(Path) ->
     mochiweb_util:partition(Path, "/").
@@ -78,62 +310,8 @@ serve_file(#httpd{mochi_req=MochiReq}=Req, RelativePath, DocumentRoot,
     Headers1 = couch_httpd_cors:headers(Req, Headers),
     {ok, MochiReq:serve_file(RelativePath, DocumentRoot, Headers1)}.
 
-qs_value(Req, Key) ->
-    qs_value(Req, Key, undefined).
-
-qs_value(Req, Key, Default) ->
-    couch_util:get_value(Key, qs(Req), Default).
-
-qs_json_value(Req, Key, Default) ->
-    case qs_value(Req, Key, Default) of
-        Default ->
-            Default;
-        Result ->
-            ?JSON_DECODE(Result)
-    end.
-
-qs(#httpd{mochi_req = MochiReq, qs = undefined}) ->
-    MochiReq:parse_qs();
-qs(#httpd{qs = QS}) ->
-    QS.
-
 path(#httpd{mochi_req=MochiReq}) ->
     MochiReq:get(path).
-
-absolute_uri(#httpd{mochi_req=MochiReq, absolute_uri = undefined}, Path) ->
-    XHost = config:get("httpd", "x_forwarded_host", "X-Forwarded-Host"),
-    Host = case MochiReq:get_header_value(XHost) of
-        undefined ->
-            case MochiReq:get_header_value("Host") of
-                undefined ->
-                    {ok, {Address, Port}} = inet:sockname(MochiReq:get(socket)),
-                    inet_parse:ntoa(Address) ++ ":" ++ integer_to_list(Port);
-                Value1 ->
-                    Value1
-            end;
-        Value -> Value
-    end,
-    XSsl = config:get("httpd", "x_forwarded_ssl", "X-Forwarded-Ssl"),
-    Scheme = case MochiReq:get_header_value(XSsl) of
-        "on" -> "https";
-        _ ->
-            XProto = config:get("httpd", "x_forwarded_proto",
-                "X-Forwarded-Proto"),
-            case MochiReq:get_header_value(XProto) of
-                % Restrict to "https" and "http" schemes only
-                "https" -> "https";
-                _ ->
-                    case MochiReq:get(scheme) of
-                        https ->
-                            "https";
-                        http ->
-                            "http"
-                    end
-            end
-    end,
-    Scheme ++ "://" ++ Host ++ Path;
-absolute_uri(#httpd{absolute_uri = URI}, Path) ->
-    URI ++ Path.
 
 unquote(UrlEncodedString) ->
     mochiweb_util:unquote(UrlEncodedString).
@@ -173,9 +351,6 @@ body(#httpd{mochi_req=MochiReq, req_body=ReqBody}) ->
             ReqBody
     end.
 
-validate_ctype(Req, Ctype) ->
-    couch_httpd:validate_ctype(Req, Ctype).
-
 json_body(Httpd) ->
     case body(Httpd) of
         undefined ->
@@ -191,6 +366,43 @@ json_body_obj(Httpd) ->
             throw({bad_request, "Request body must be a JSON object"})
     end.
 
+validate_ctype(Req, Ctype) ->
+    couch_httpd:validate_ctype(Req, Ctype).
+
+absolute_uri(#httpd{mochi_req=MochiReq, absolute_uri = undefined}, Path) ->
+    XHost = config:get("httpd", "x_forwarded_host", "X-Forwarded-Host"),
+    Host = case MochiReq:get_header_value(XHost) of
+        undefined ->
+            case MochiReq:get_header_value("Host") of
+                undefined ->
+                    {ok, {Address, Port}} = inet:sockname(MochiReq:get(socket)),
+                    inet_parse:ntoa(Address) ++ ":" ++ integer_to_list(Port);
+                Value1 ->
+                    Value1
+            end;
+        Value -> Value
+    end,
+    XSsl = config:get("httpd", "x_forwarded_ssl", "X-Forwarded-Ssl"),
+    Scheme = case MochiReq:get_header_value(XSsl) of
+        "on" -> "https";
+        _ ->
+            XProto = config:get("httpd", "x_forwarded_proto",
+                "X-Forwarded-Proto"),
+            case MochiReq:get_header_value(XProto) of
+                % Restrict to "https" and "http" schemes only
+                "https" -> "https";
+                _ ->
+                    case MochiReq:get(scheme) of
+                        https ->
+                            "https";
+                        http ->
+                            "http"
+                    end
+            end
+    end,
+    Scheme ++ "://" ++ Host ++ Path;
+absolute_uri(#httpd{absolute_uri = URI}, Path) ->
+    URI ++ Path.
 
 doc_etag(#doc{revs={Start, [DiskRev|_]}}) ->
     "\"" ++ ?b2l(couch_doc:rev_to_str({Start, DiskRev})) ++ "\"".
@@ -225,147 +437,65 @@ verify_is_server_admin(#httpd{user_ctx=#user_ctx{roles=Roles}}) ->
     false -> throw({unauthorized, <<"You are not a server admin.">>})
     end.
 
-start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Length) ->
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers1 = Headers0 ++ server_header() ++
-	couch_httpd_auth:cookie_auth_header(Req, Headers0),
-    Headers2 = couch_httpd_cors:headers(Req, Headers1),
-    Resp = MochiReq:start_response_length({Code, Headers2, Length}),
-    case MochiReq:get(method) of
-    'HEAD' -> throw({http_head_abort, Resp});
-    _ -> ok
-    end,
-    {ok, Resp}.
-
-send(Resp, Data) ->
-    Resp:send(Data),
-    {ok, Resp}.
-
-start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0) ->
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers1 = Headers0 ++ server_header() ++
-        couch_httpd_auth:cookie_auth_header(Req, Headers0),
-    Headers2 = couch_httpd_cors:headers(Req, Headers1),
-    Resp = MochiReq:respond({Code, Headers2, chunked}),
-    case MochiReq:get(method) of
-    'HEAD' -> throw({http_head_abort, Resp});
-    _ -> ok
-    end,
-    {ok, Resp}.
-
-send_chunk(Resp, Data) ->
-    Resp:write_chunk(Data),
-    {ok, Resp}.
-
-send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Body) ->
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers = Headers0 ++ server_header() ++
-	[timing(), reqid() | couch_httpd_auth:cookie_auth_header(Req, Headers0)],
-    {ok, MochiReq:respond({Code, Headers, Body})}.
-
 
 send_method_not_allowed(Req, Methods) ->
     send_error(Req, 405, [{"Allow", Methods}], <<"method_not_allowed">>,
         ?l2b("Only " ++ Methods ++ " allowed"), []).
-
-send_json(Req, Value) ->
-    send_json(Req, 200, Value).
-
-send_json(Req, Code, Value) ->
-    send_json(Req, Code, [], Value).
-
-send_json(Req, Code, Headers0, Value) ->
-    Headers1 = [timing(), reqid() | Headers0],
-    Headers2 = couch_httpd_cors:headers(Req, Headers1),
-    couch_httpd:send_json(Req, Code, Headers2, Value).
-
-start_json_response(Req, Code) ->
-    start_json_response(Req, Code, []).
-
-start_json_response(Req, Code, Headers0) ->
-    Headers1 = [timing(), reqid() | Headers0],
-    Headers2 = couch_httpd_cors:headers(Req, Headers1),
-    couch_httpd:start_json_response(Req, Code, Headers2).
-
-end_json_response(Resp) ->
-    couch_httpd:end_json_response(Resp).
-
-start_delayed_json_response(Req, Code) ->
-    start_delayed_json_response(Req, Code, []).
-
-start_delayed_json_response(Req, Code, Headers) ->
-    start_delayed_json_response(Req, Code, Headers, "").
-
-start_delayed_json_response(Req, Code, Headers, FirstChunk) ->
-    {ok, #delayed_resp{
-        start_fun = fun start_json_response/3,
-        req = Req,
-        code = Code,
-        headers = Headers,
-        first_chunk = FirstChunk}}.
-
-start_delayed_chunked_response(Req, Code, Headers) ->
-    start_delayed_chunked_response(Req, Code, Headers, "").
-
-start_delayed_chunked_response(Req, Code, Headers, FirstChunk) ->
-    {ok, #delayed_resp{
-        start_fun = fun start_chunked_response/3,
-        req = Req,
-        code = Code,
-        headers = Headers,
-        first_chunk = FirstChunk}}.
-
-send_delayed_chunk(#delayed_resp{}=DelayedResp, Chunk) ->
-    {ok, #delayed_resp{resp=Resp}=DelayedResp1} =
-        start_delayed_response(DelayedResp),
-    {ok, Resp} = send_chunk(Resp, Chunk),
-    {ok, DelayedResp1}.
-
-send_delayed_last_chunk(Req) ->
-    send_delayed_chunk(Req, []).
-
-send_delayed_error(#delayed_resp{req=Req,resp=nil}=DelayedResp, Reason) ->
-    {Code, ErrorStr, ReasonStr} = error_info(Reason),
-    {ok, Resp} = send_error(Req, Code, ErrorStr, ReasonStr),
-    {ok, DelayedResp#delayed_resp{resp=Resp}};
-send_delayed_error(#delayed_resp{resp=Resp}, Reason) ->
-    log_error_with_stack_trace(Reason),
-    throw({http_abort, Resp, Reason}).
-
-close_delayed_json_object(Resp, Buffer, Terminator, 0) ->
-    % Use a separate chunk to close the streamed array to maintain strict
-    % compatibility with earlier versions. See COUCHDB-2724
-    {ok, R1} = couch_httpd:send_delayed_chunk(Resp, Buffer),
-    send_delayed_chunk(R1, Terminator);
-close_delayed_json_object(Resp, Buffer, Terminator, _Threshold) ->
-    send_delayed_chunk(Resp, [Buffer | Terminator]).
-
-end_delayed_json_response(#delayed_resp{}=DelayedResp) ->
-    {ok, #delayed_resp{resp=Resp}} =
-        start_delayed_response(DelayedResp),
-    end_json_response(Resp).
 
 get_delayed_req(#delayed_resp{req=#httpd{mochi_req=MochiReq}}) ->
     MochiReq;
 get_delayed_req(Resp) ->
     Resp:get(request).
 
-start_delayed_response(#delayed_resp{resp=nil}=DelayedResp) ->
-    #delayed_resp{
-        start_fun=StartFun,
-        req=Req,
-        code=Code,
-        headers=Headers,
-        first_chunk=FirstChunk
-    }=DelayedResp,
-    {ok, Resp} = StartFun(Req, Code, Headers),
-    case FirstChunk of
-        "" -> ok;
-        _ -> {ok, Resp} = send_chunk(Resp, FirstChunk)
-    end,
-    {ok, DelayedResp#delayed_resp{resp=Resp}};
-start_delayed_response(#delayed_resp{}=DelayedResp) ->
-    {ok, DelayedResp}.
+%% @doc CouchDB uses a chunked transfer-encoding to stream responses to
+%% _all_docs, _changes, _view and other similar requests. This configuration
+%% value sets the maximum size of a chunk; the system will buffer rows in the
+%% response until it reaches this threshold and then send all the rows in one
+%% chunk to improve network efficiency. The default value is chosen so that
+%% the assembled chunk fits into the default Ethernet frame size (some reserved
+%% padding is necessary to accommodate the reporting of the chunk length). Set
+%% this value to 0 to restore the older behavior of sending each row in a
+%% dedicated chunk.
+chunked_response_buffer_size() ->
+    config:get_integer("httpd", "chunked_response_buffer", 1490).
+
+%% ================
+%% Helper functions
+
+server_header() ->
+    couch_httpd:server_header().
+
+
+send(Resp, Data) ->
+    Resp:send(Data),
+    {ok, Resp}.
+
+
+send_chunk(Resp, Data) ->
+    Resp:write_chunk(Data),
+    {ok, Resp}.
+
+qs_value(Req, Key) ->
+    qs_value(Req, Key, undefined).
+
+qs_value(Req, Key, Default) ->
+    couch_util:get_value(Key, qs(Req), Default).
+
+qs_json_value(Req, Key, Default) ->
+    case qs_value(Req, Key, Default) of
+        Default ->
+            Default;
+        Result ->
+            ?JSON_DECODE(Result)
+    end.
+
+qs(#httpd{mochi_req = MochiReq, qs = undefined}) ->
+    MochiReq:parse_qs();
+qs(#httpd{qs = QS}) ->
+    QS.
+
+%% ===============
+%% Errors Handling
 
 error_info({Error, Reason}) when is_list(Reason) ->
     error_info({Error, couch_util:to_binary(Reason)});
@@ -516,53 +646,9 @@ error_headers(#httpd{mochi_req=MochiReq}=Req, 401=Code, ErrorStr, ReasonStr) ->
 error_headers(_, Code, _, _) ->
     {Code, []}.
 
-send_error(_Req, {already_sent, Resp, _Error}) ->
-    {ok, Resp};
+%% =================
+%% Private functions
 
-send_error(Req, Error) ->
-    {Code, ErrorStr, ReasonStr} = error_info(Error),
-    {Code1, Headers} = error_headers(Req, Code, ErrorStr, ReasonStr),
-    send_error(Req, Code1, Headers, ErrorStr, ReasonStr, json_stack(Error)).
-
-send_error(Req, Code, ErrorStr, ReasonStr) ->
-    send_error(Req, Code, [], ErrorStr, ReasonStr, []).
-
-send_error(Req, Code, Headers, ErrorStr, ReasonStr, []) ->
-    send_json(Req, Code, Headers,
-        {[{<<"error">>,  ErrorStr},
-        {<<"reason">>, ReasonStr}]});
-send_error(Req, Code, Headers, ErrorStr, ReasonStr, Stack) ->
-    log_error_with_stack_trace({ErrorStr, ReasonStr, Stack}),
-    send_json(Req, Code, [stack_trace_id(Stack) | Headers],
-        {[{<<"error">>,  ErrorStr},
-        {<<"reason">>, ReasonStr} |
-        case Stack of [] -> []; _ -> [{<<"ref">>, stack_hash(Stack)}] end
-    ]}).
-
-% give the option for list functions to output html or other raw errors
-send_chunked_error(Resp, {_Error, {[{<<"body">>, Reason}]}}) ->
-    send_chunk(Resp, Reason),
-    send_chunk(Resp, []);
-
-send_chunked_error(Resp, Error) ->
-    Stack = json_stack(Error),
-    log_error_with_stack_trace(Error),
-    {Code, ErrorStr, ReasonStr} = error_info(Error),
-    JsonError = {[{<<"code">>, Code},
-        {<<"error">>,  ErrorStr},
-        {<<"reason">>, ReasonStr} |
-        case Stack of [] -> []; _ -> [{<<"ref">>, stack_hash(Stack)}] end
-    ]},
-    send_chunk(Resp, ?l2b([$\n,?JSON_ENCODE(JsonError),$\n])),
-    send_chunk(Resp, []).
-
-send_redirect(Req, Path) ->
-    Headers0 = [{"Location", couch_httpd:absolute_uri(Req, Path)}],
-    Headers1 = couch_httpd_cors:headers(Req, Headers0),
-    send_response(Req, 301, Headers1, <<>>).
-
-server_header() ->
-    couch_httpd:server_header().
 
 timing() ->
     case get(body_time) of
@@ -625,15 +711,3 @@ stack_trace_id(Stack) ->
 
 stack_hash(Stack) ->
     erlang:crc32(term_to_binary(Stack)).
-
-%% @doc CouchDB uses a chunked transfer-encoding to stream responses to
-%% _all_docs, _changes, _view and other similar requests. This configuration
-%% value sets the maximum size of a chunk; the system will buffer rows in the
-%% response until it reaches this threshold and then send all the rows in one
-%% chunk to improve network efficiency. The default value is chosen so that
-%% the assembled chunk fits into the default Ethernet frame size (some reserved
-%% padding is necessary to accommodate the reporting of the chunk length). Set
-%% this value to 0 to restore the older behavior of sending each row in a
-%% dedicated chunk.
-chunked_response_buffer_size() ->
-    config:get_integer("httpd", "chunked_response_buffer", 1490).
