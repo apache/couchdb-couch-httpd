@@ -13,30 +13,28 @@
 -module(couch_httpd_util).
 
 -export([
-    make_arity_1_fun/1,
-    make_arity_2_fun/1,
-    make_arity_3_fun/1
+    fun_from_spec/2
 ]).
 
 % SpecStr is a string like "{my_module, my_fun}"
 %  or "{my_module, my_fun, <<"my_arg">>}"
-make_arity_1_fun(SpecStr) ->
+fun_from_spec(SpecStr, 1) ->
     case couch_util:parse_term(SpecStr) of
     {ok, {Mod, Fun, SpecArg}} ->
         fun(Arg) -> Mod:Fun(Arg, SpecArg) end;
     {ok, {Mod, Fun}} ->
         fun(Arg) -> Mod:Fun(Arg) end
-    end.
+    end;
 
-make_arity_2_fun(SpecStr) ->
+fun_from_spec(SpecStr, 2) ->
     case couch_util:parse_term(SpecStr) of
     {ok, {Mod, Fun, SpecArg}} ->
         fun(Arg1, Arg2) -> Mod:Fun(Arg1, Arg2, SpecArg) end;
     {ok, {Mod, Fun}} ->
         fun(Arg1, Arg2) -> Mod:Fun(Arg1, Arg2) end
-    end.
+    end;
 
-make_arity_3_fun(SpecStr) ->
+fun_from_spec(SpecStr, 3) ->
     case couch_util:parse_term(SpecStr) of
     {ok, {Mod, Fun, SpecArg}} ->
         fun(Arg1, Arg2, Arg3) -> Mod:Fun(Arg1, Arg2, Arg3, SpecArg) end;
