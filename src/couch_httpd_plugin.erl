@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(chttpd_plugin).
+-module(couch_httpd_plugin).
 
 -export([
     before_request/1,
