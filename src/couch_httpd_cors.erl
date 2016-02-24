@@ -52,7 +52,7 @@ maybe_handle_preflight_request(#httpd{}=Req, Config) ->
                     not_preflight;
                 UnknownError ->
                     couch_log:error(
-                        "Unknown response of chttpd_cors:preflight_request(~p): ~p",
+                        "Unknown response of couch_httpd_cors:preflight_request(~p): ~p",
                         [Req, UnknownError]
                     ),
                     not_preflight

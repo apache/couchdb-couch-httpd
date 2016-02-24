@@ -161,7 +161,7 @@ send_external_response(Req, Response) ->
         json = Json
     } = parse_external_response(Response),
     Headers1 = default_or_content_type(CType, Headers),
-    Headers2 = chttpd_cors:headers(Req, Headers1),
+    Headers2 = couch_httpd_cors:headers(Req, Headers1),
     case Json of
     nil ->
         couch_httpd:send_response(Req, Code, Headers2, Data);
