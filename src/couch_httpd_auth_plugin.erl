@@ -10,7 +10,7 @@
 % License for the specific language governing permissions and limitations under
 % the License.
 
--module(chttpd_auth).
+-module(couch_httpd_auth_plugin).
 
 -export([authenticate/2]).
 -export([authorize/2]).
