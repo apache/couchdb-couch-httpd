@@ -54,6 +54,6 @@ maybe_replace(Key, Value, Settings) ->
     Value ->
         {ok, Settings};
     _ ->
-        chttpd:stop(),
+        couch_httpd:stop(),
         {ok, lists:keyreplace(Key, 1, Settings, {Key, Value})}
     end.

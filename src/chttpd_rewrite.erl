@@ -38,13 +38,13 @@ handle_rewrite_req(#httpd{}=Req, Db, DDoc) ->
         Rules when is_binary(Rules) ->
             case couch_query_servers:rewrite(Req, Db, DDoc) of
                 undefined ->
-                    chttpd:send_error(Req, 404, <<"rewrite_error">>,
+                    couch_httpd:send_error(Req, 404, <<"rewrite_error">>,
                         <<"Invalid path.">>);
                 Rewrite ->
                     do_rewrite(Req, Rewrite)
             end;
         undefined ->
-            chttpd:send_error(Req, 404, <<"rewrite_error">>,
+            couch_httpd:send_error(Req, 404, <<"rewrite_error">>,
                 <<"Invalid path.">>)
     end.
 
@@ -66,9 +66,9 @@ do_rewrite(#httpd{mochi_req=MochiReq}=Req, {Props}=Rewrite) when is_list(Props) 
                                                Headers),
             NewMochiReq:cleanup(),
             couch_log:debug("rewrite to ~p", [Path]),
-            chttpd:handle_request_int(NewMochiReq);
+            couch_httpd:handle_request_int(NewMochiReq);
         Code ->
-            chttpd:send_response(
+            couch_httpd:send_response(
                 Req,
                 Code,
                 case couch_util:get_value(<<"headers">>, Props) of
@@ -83,7 +83,7 @@ do_rewrite(#httpd{method=Method,
            Rules) when is_list(Rules) ->
     % create dispatch list from rules
     Prefix = path_prefix(Req),
-    QueryList = lists:map(fun decode_query_value/1, chttpd:qs(Req)),
+    QueryList = lists:map(fun decode_query_value/1, couch_httpd:qs(Req)),
 
     DispatchList =  [make_rule(Rule) || {Rule} <- Rules],
     Method1 = couch_util:to_binary(Method),
@@ -123,7 +123,7 @@ do_rewrite(#httpd{method=Method,
     % cleanup, It force mochiweb to reparse raw uri.
     MochiReq1:cleanup(),
 
-    chttpd:handle_request_int(MochiReq1).
+    couch_httpd:handle_request_int(MochiReq1).
 
 
 rewrite_method(#httpd{method=Method}, {Props}) ->
@@ -149,12 +149,12 @@ rewrite_path(#httpd{}=Req, {Props}=Rewrite) ->
     end.
 
 rewrite_query_params(#httpd{}=Req, {Props}) ->
-    RequestQS = chttpd:qs(Req),
+    RequestQS = couch_httpd:qs(Req),
     RewriteQS = case couch_util:get_value(<<"query">>, Props) of
         undefined -> RequestQS;
         {V} -> V
     end,
-    RewriteQSEsc = [{chttpd:quote(K), chttpd:quote(V)} || {K, V} <- RewriteQS],
+    RewriteQSEsc = [{couch_httpd:quote(K), couch_httpd:quote(V)} || {K, V} <- RewriteQS],
     iolist_to_binary([[K, "=", V] || {K, V} <- RewriteQSEsc]).
 
 rewrite_headers(#httpd{mochi_req=MochiReq}, {Props}) ->

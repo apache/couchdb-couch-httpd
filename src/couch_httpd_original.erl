@@ -413,7 +413,7 @@ check_request_uri_length(Uri, MaxUriLen) when is_list(MaxUriLen) ->
 
 authenticate_request(Req) ->
     {ok, AuthenticationFuns} = application:get_env(couch, auth_handlers),
-    chttpd:authenticate_request(Req, couch_auth_cache, AuthenticationFuns).
+    couch_httpd:authenticate_request(Req, couch_auth_cache, AuthenticationFuns).
 
 increment_method_stats(Method) ->
     couch_stats:increment_counter([couchdb, httpd_request_methods, Method]).

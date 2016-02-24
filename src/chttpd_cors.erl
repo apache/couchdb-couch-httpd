@@ -38,7 +38,7 @@ maybe_handle_preflight_request(Req) ->
         not_preflight ->
             not_preflight;
         {ok, PreflightHeaders} ->
-            chttpd:send_response(Req, 204, PreflightHeaders, <<>>)
+            couch_httpd:send_response(Req, 204, PreflightHeaders, <<>>)
     end.
 
 
@@ -98,7 +98,7 @@ preflight_request(Req, Config) ->
 
 
 handle_preflight_request(Req, Config, Origin) ->
-    case chttpd:header_value(Req, "Access-Control-Request-Method") of
+    case couch_httpd:header_value(Req, "Access-Control-Request-Method") of
     undefined ->
         %% If there is no Access-Control-Request-Method header
         %% or if parsing failed, do not set any additional headers
@@ -126,7 +126,7 @@ handle_preflight_request(Req, Config, Origin) ->
         case lists:member(Method, SupportedMethods) of
             true ->
                 %% method ok , check headers
-                AccessHeaders = chttpd:header_value(Req,
+                AccessHeaders = couch_httpd:header_value(Req,
                     "Access-Control-Request-Headers"),
                 {FinalReqHeaders, ReqHeaders} = case AccessHeaders of
                     undefined -> {"", []};
@@ -356,7 +356,7 @@ get_origin_config(Config, Origin, Key, Default) ->
 
 
 get_origin(Req) ->
-    case chttpd:header_value(Req, "Origin") of
+    case couch_httpd:header_value(Req, "Origin") of
         undefined ->
             undefined;
         Origin ->

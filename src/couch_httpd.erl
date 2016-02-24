@@ -210,7 +210,7 @@ handle_request_int(MochiReq) ->
         original_method = Method1,
         nonce = Nonce,
         method = Method,
-        path_parts = [list_to_binary(chttpd:unquote(Part))
+        path_parts = [list_to_binary(couch_httpd:unquote(Part))
                 || Part <- string:tokens(Path, "/")],
         requested_path_parts = [?l2b(unquote(Part))
                 || Part <- string:tokens(RequestedPath, "/")]
@@ -383,7 +383,7 @@ maybe_log(_HttpReq, #httpd_resp{should_log = false}) ->
 %% aren't sharded. So for now when a local db is specified as the source or
 %% the target, it's hacked to make it a full url and treated as a remote.
 possibly_hack(#httpd{path_parts=[<<"_replicate">>]}=Req) ->
-    {Props0} = chttpd:json_body_obj(Req),
+    {Props0} = couch_httpd:json_body_obj(Req),
     Props1 = fix_uri(Req, Props0, <<"source">>),
     Props2 = fix_uri(Req, Props1, <<"target">>),
     put(post_body, {Props2}),
@@ -636,7 +636,7 @@ etag_match(Req, CurrentEtag) when is_binary(CurrentEtag) ->
 
 etag_match(Req, CurrentEtag) ->
     EtagsToMatch = string:tokens(
-        chttpd:header_value(Req, "If-None-Match", ""), ", "),
+        couch_httpd:header_value(Req, "If-None-Match", ""), ", "),
     lists:member(CurrentEtag, EtagsToMatch).
 
 etag_respond(Req, CurrentEtag, RespFun) ->
@@ -645,7 +645,7 @@ etag_respond(Req, CurrentEtag, RespFun) ->
         % the client has this in their cache.
         Headers0 = [{"Etag", CurrentEtag}],
         Headers1 = chttpd_cors:headers(Req, Headers0),
-        chttpd:send_response(Req, 304, Headers1, <<>>);
+        couch_httpd:send_response(Req, 304, Headers1, <<>>);
     false ->
         % Run the function.
         RespFun()
@@ -767,7 +767,7 @@ send_delayed_error(#delayed_resp{resp=Resp}, Reason) ->
 close_delayed_json_object(Resp, Buffer, Terminator, 0) ->
     % Use a separate chunk to close the streamed array to maintain strict
     % compatibility with earlier versions. See COUCHDB-2724
-    {ok, R1} = chttpd:send_delayed_chunk(Resp, Buffer),
+    {ok, R1} = couch_httpd:send_delayed_chunk(Resp, Buffer),
     send_delayed_chunk(R1, Terminator);
 close_delayed_json_object(Resp, Buffer, Terminator, _Threshold) ->
     send_delayed_chunk(Resp, [Buffer | Terminator]).
@@ -989,7 +989,7 @@ send_chunked_error(Resp, Error) ->
     send_chunk(Resp, []).
 
 send_redirect(Req, Path) ->
-    Headers0 = [{"Location", chttpd:absolute_uri(Req, Path)}],
+    Headers0 = [{"Location", couch_httpd:absolute_uri(Req, Path)}],
     Headers1 = chttpd_cors:headers(Req, Headers0),
     send_response(Req, 301, Headers1, <<>>).
 

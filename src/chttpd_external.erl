@@ -17,7 +17,7 @@
 -export([json_req_obj_fields/0, json_req_obj/2, json_req_obj/3, json_req_obj/4]).
 -export([default_or_content_type/2, parse_external_response/1]).
 
--import(chttpd,[send_error/4]).
+-import(couch_httpd,[send_error/4]).
 
 -include_lib("couch/include/couch_db.hrl").
 
@@ -164,9 +164,9 @@ send_external_response(Req, Response) ->
     Headers2 = chttpd_cors:headers(Req, Headers1),
     case Json of
     nil ->
-        chttpd:send_response(Req, Code, Headers2, Data);
+        couch_httpd:send_response(Req, Code, Headers2, Data);
     Json ->
-        chttpd:send_json(Req, Code, Headers2, Json)
+        couch_httpd:send_json(Req, Code, Headers2, Json)
     end.
 
 parse_external_response({Response}) ->
