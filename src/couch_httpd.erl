@@ -345,22 +345,20 @@ recv_chunked(#httpd{mochi_req=MochiReq}, MaxChunkSize, ChunkFun, InitState) ->
 body_length(#httpd{mochi_req=MochiReq}) ->
     MochiReq:get(body_length).
 
-body(#httpd{mochi_req=MochiReq, req_body=ReqBody}) ->
-    case ReqBody of
-        undefined ->
-            % Maximum size of document PUT request body (4GB)
-            MaxSize = list_to_integer(
-                config:get("couchdb", "max_document_size", "4294967296")),
-            Begin = os:timestamp(),
-            try
-                MochiReq:recv_body(MaxSize)
-            after
-                T = timer:now_diff(os:timestamp(), Begin) div 1000,
-                put(body_time, T)
-            end;
-        _Else ->
-            ReqBody
-    end.
+body(#httpd{mochi_req=MochiReq, req_body=undefined}) ->
+    % Maximum size of document PUT request body (4GB)
+    MaxSize = list_to_integer(
+        config:get("couchdb", "max_document_size", "4294967296")),
+    Begin = os:timestamp(),
+    try
+        MochiReq:recv_body(MaxSize)
+    after
+        T = timer:now_diff(os:timestamp(), Begin) div 1000,
+        put(body_time, T)
+    end;
+body(#httpd{req_body=ReqBody}) ->
+    ReqBody.
+
 
 json_body(Httpd) ->
     case body(Httpd) of
