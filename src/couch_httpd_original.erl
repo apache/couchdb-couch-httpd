@@ -474,16 +474,6 @@ host_for_request(#httpd{mochi_req=MochiReq}) ->
         Value -> Value
     end.
 
-maybe_decompress(Httpd, Body) ->
-    case header_value(Httpd, "Content-Encoding", "identity") of
-    "gzip" ->
-        zlib:gunzip(Body);
-    "identity" ->
-        Body;
-    Else ->
-        throw({bad_ctype, [Else, " is not a supported content encoding."]})
-    end.
-
 
 etag_match(Req, CurrentEtag) when is_binary(CurrentEtag) ->
     etag_match(Req, binary_to_list(CurrentEtag));
