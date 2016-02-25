@@ -16,6 +16,7 @@
 
 -export([
     start_response_length/4,
+    start_response/3,
     start_chunked_response/3,
     start_json_response/2,
     start_json_response/3,
@@ -123,6 +124,19 @@ start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Length) ->
     case MochiReq:get(method) of
     'HEAD' -> throw({http_head_abort, Resp});
     _ -> ok
+    end,
+    {ok, Resp}.
+
+start_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
+    log_request(Req, Code),
+    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
+    CookieHeader = couch_httpd_auth:cookie_auth_header(Req, Headers),
+    Headers1 = Headers ++ server_header() ++ CookieHeader,
+    Headers2 = couch_httpd_cors:cors_headers(Req, Headers1),
+    Resp = MochiReq:start_response({Code, Headers2}),
+    case MochiReq:get(method) of
+        'HEAD' -> throw({http_head_abort, Resp});
+        _ -> ok
     end,
     {ok, Resp}.
 

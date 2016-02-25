@@ -22,7 +22,7 @@
 -export([etag_maybe/2]).
 
 -export([start_chunked_response/3,send_chunk/2]).
--export([start_response_length/4, start_response/3]).
+-export([start_response_length/4]).
 -export([send_response/4,send_error/2,send_error/4, send_chunked_error/2]).
 -export([accepted_encodings/1,handle_request_int/5,validate_referer/1]).
 -export([http_1_0_keep_alive/2]).
@@ -67,7 +67,8 @@
     body/1,
     log_request/2,
     etag_respond/3,
-    etag_match/2
+    etag_match/2,
+    start_reponse/3
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -503,19 +504,6 @@ start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Length) ->
     case MochiReq:get(method) of
     'HEAD' -> throw({http_head_abort, Resp});
     _ -> ok
-    end,
-    {ok, Resp}.
-
-start_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
-    log_request(Req, Code),
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    CookieHeader = couch_httpd_auth:cookie_auth_header(Req, Headers),
-    Headers1 = Headers ++ server_header() ++ CookieHeader,
-    Headers2 = couch_httpd_cors:cors_headers(Req, Headers1),
-    Resp = MochiReq:start_response({Code, Headers2}),
-    case MochiReq:get(method) of
-        'HEAD' -> throw({http_head_abort, Resp});
-        _ -> ok
     end,
     {ok, Resp}.
 
