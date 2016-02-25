@@ -30,7 +30,7 @@ decode_multipart_stream(ContentType, DataFun, Ref) ->
         ParentRef = erlang:monitor(process, Parent),
         put(mp_parent_ref, ParentRef),
         num_mp_writers(NumMpWriters),
-        {<<"--",_/binary>>, _, _} = couch_httpd:parse_multipart_request(
+        {<<"--",_/binary>>, _, _} = parse_multipart_request(
             ContentType, DataFun,
             fun(Next) -> mp_parse_doc(Next, []) end),
         unlink(Parent)
@@ -260,4 +260,125 @@ abort_multipart_stream(Parser) ->
         % wait this long to see if they just had an error
         % like a validate_doc_update failure.
         throw(multi_part_abort_timeout)
+    end.
+
+-record(mp, {boundary, buffer, data_fun, callback}).
+
+
+parse_multipart_request(ContentType, DataFun, Callback) ->
+    Boundary0 = iolist_to_binary(get_boundary(ContentType)),
+    Boundary = <<"\r\n--", Boundary0/binary>>,
+    Mp = #mp{boundary= Boundary,
+            buffer= <<>>,
+            data_fun=DataFun,
+            callback=Callback},
+    {Mp2, _NilCallback} = read_until(Mp, <<"--", Boundary0/binary>>,
+        fun nil_callback/1),
+    #mp{buffer=Buffer, data_fun=DataFun2, callback=Callback2} =
+            parse_part_header(Mp2),
+    {Buffer, DataFun2, Callback2}.
+
+nil_callback(_Data)->
+    fun nil_callback/1.
+
+get_boundary({"multipart/" ++ _, Opts}) ->
+    case couch_util:get_value("boundary", Opts) of
+        S when is_list(S) ->
+            S
+    end;
+get_boundary(ContentType) ->
+    {"multipart/" ++ _ , Opts} = mochiweb_util:parse_header(ContentType),
+    get_boundary({"multipart/", Opts}).
+
+
+
+split_header(<<>>) ->
+    [];
+split_header(Line) ->
+    {Name, Rest} = lists:splitwith(fun (C) -> C =/= $: end,
+                                   binary_to_list(Line)),
+    [$: | Value] = case Rest of
+        [] ->
+            throw({bad_request, <<"bad part header">>});
+        Res ->
+            Res
+    end,
+    [{string:to_lower(string:strip(Name)),
+     mochiweb_util:parse_header(Value)}].
+
+read_until(#mp{data_fun=DataFun, buffer=Buffer}=Mp, Pattern, Callback) ->
+    case couch_util:find_in_binary(Pattern, Buffer) of
+    not_found ->
+        Callback2 = Callback(Buffer),
+        {Buffer2, DataFun2} = DataFun(),
+        Buffer3 = iolist_to_binary(Buffer2),
+        read_until(Mp#mp{data_fun=DataFun2,buffer=Buffer3}, Pattern, Callback2);
+    {partial, 0} ->
+        {NewData, DataFun2} = DataFun(),
+        read_until(Mp#mp{data_fun=DataFun2,
+                buffer= iolist_to_binary([Buffer,NewData])},
+                Pattern, Callback);
+    {partial, Skip} ->
+        <<DataChunk:Skip/binary, Rest/binary>> = Buffer,
+        Callback2 = Callback(DataChunk),
+        {NewData, DataFun2} = DataFun(),
+        read_until(Mp#mp{data_fun=DataFun2,
+                buffer= iolist_to_binary([Rest | NewData])},
+                Pattern, Callback2);
+    {exact, 0} ->
+        PatternLen = size(Pattern),
+        <<_:PatternLen/binary, Rest/binary>> = Buffer,
+        {Mp#mp{buffer= Rest}, Callback};
+    {exact, Skip} ->
+        PatternLen = size(Pattern),
+        <<DataChunk:Skip/binary, _:PatternLen/binary, Rest/binary>> = Buffer,
+        Callback2 = Callback(DataChunk),
+        {Mp#mp{buffer= Rest}, Callback2}
+    end.
+
+
+parse_part_header(#mp{callback=UserCallBack}=Mp) ->
+    {Mp2, AccCallback} = read_until(Mp, <<"\r\n\r\n">>,
+            fun(Next) -> acc_callback(Next, []) end),
+    HeaderData = AccCallback(get_data),
+
+    Headers =
+    lists:foldl(fun(Line, Acc) ->
+            split_header(Line) ++ Acc
+        end, [], re:split(HeaderData,<<"\r\n">>, [])),
+    NextCallback = UserCallBack({headers, Headers}),
+    parse_part_body(Mp2#mp{callback=NextCallback}).
+
+parse_part_body(#mp{boundary=Prefix, callback=Callback}=Mp) ->
+    {Mp2, WrappedCallback} = read_until(Mp, Prefix,
+            fun(Data) -> body_callback_wrapper(Data, Callback) end),
+    Callback2 = WrappedCallback(get_callback),
+    Callback3 = Callback2(body_end),
+    case check_for_last(Mp2#mp{callback=Callback3}) of
+    {last, #mp{callback=Callback3}=Mp3} ->
+        Mp3#mp{callback=Callback3(eof)};
+    {more, Mp3} ->
+        parse_part_header(Mp3)
+    end.
+
+acc_callback(get_data, Acc)->
+    iolist_to_binary(lists:reverse(Acc));
+acc_callback(Data, Acc)->
+    fun(Next) -> acc_callback(Next, [Data | Acc]) end.
+
+body_callback_wrapper(get_callback, Callback) ->
+    Callback;
+body_callback_wrapper(Data, Callback) ->
+    Callback2 = Callback({body, Data}),
+    fun(Next) -> body_callback_wrapper(Next, Callback2) end.
+
+
+check_for_last(#mp{buffer=Buffer, data_fun=DataFun}=Mp) ->
+    case Buffer of
+    <<"--",_/binary>> -> {last, Mp};
+    <<_, _, _/binary>> -> {more, Mp};
+    _ -> % not long enough
+        {Data, DataFun2} = DataFun(),
+        check_for_last(Mp#mp{buffer= <<Buffer/binary, Data/binary>>,
+                data_fun = DataFun2})
     end.
