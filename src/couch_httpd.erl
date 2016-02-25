@@ -143,11 +143,13 @@ start_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
     {ok, Resp}.
 
 start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0) ->
+    log_request(Req, Code),
     couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers1 = Headers0 ++ server_header() ++
-        couch_httpd_auth:cookie_auth_header(Req, Headers0),
-    Headers2 = couch_httpd_cors:headers(Req, Headers1),
-    Resp = MochiReq:respond({Code, Headers2, chunked}),
+    Headers1 = http_1_0_keep_alive(MochiReq, Headers0),
+    Headers2 = Headers1 ++ server_header() ++
+        couch_httpd_auth:cookie_auth_header(Req, Headers1),
+    Headers3 = couch_httpd_cors:headers(Req, Headers2),
+    Resp = MochiReq:respond({Code, Headers3, chunked}),
     case MochiReq:get(method) of
     'HEAD' -> throw({http_head_abort, Resp});
     _ -> ok
@@ -210,11 +212,21 @@ start_delayed_json_response(Req, Code, Headers, FirstChunk) ->
         headers = Headers,
         first_chunk = FirstChunk}}.
 
-send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Body) ->
+send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Body) ->
+    log_request(Req, Code),
     couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers = Headers0 ++ server_header() ++
-	[timing(), reqid() | couch_httpd_auth:cookie_auth_header(Req, Headers0)],
-    {ok, MochiReq:respond({Code, Headers, Body})}.
+    Headers1 = http_1_0_keep_alive(MochiReq, Headers),
+    if Code >= 500 ->
+        couch_log:error("httpd ~p error response:~n ~s", [Code, Body]);
+    Code >= 400 ->
+        couch_log:debug("httpd ~p error response:~n ~s", [Code, Body]);
+    true -> ok
+    end,
+    Headers2 = Headers1 ++ server_header() ++
+               [timing(), reqid() | couch_httpd_auth:cookie_auth_header(Req, Headers1)],
+    Headers3 = couch_httpd_cors:cors_headers(Req, Headers2),
+
+    {ok, MochiReq:respond({Code, Headers3, Body})}.
 
 send_json(Req, Value) ->
     send_json(Req, 200, Value).
@@ -821,6 +833,24 @@ end_jsonp() ->
         [] -> [];
         _ -> ");"
     end.
+
+http_1_0_keep_alive(Req, Headers) ->
+    KeepOpen = Req:should_close() == false,
+    IsHttp10 = Req:get(version) == {1, 0},
+    NoRespHeader = no_resp_conn_header(Headers),
+    case KeepOpen andalso IsHttp10 andalso NoRespHeader of
+        true -> [{"Connection", "Keep-Alive"} | Headers];
+        false -> Headers
+    end.
+
+no_resp_conn_header([]) ->
+    true;
+no_resp_conn_header([{Hdr, _} | Rest]) ->
+    case string:to_lower(Hdr) of
+        "connection" -> false;
+        _ -> no_resp_conn_header(Rest)
+    end.
+
 
 negotiate_content_type(_Req) ->
     case get(jsonp) of

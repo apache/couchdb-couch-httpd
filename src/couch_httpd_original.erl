@@ -20,10 +20,9 @@
 -export([make_fun_spec_strs/1]).
 
 
--export([start_chunked_response/3]).
--export([send_response/4,send_error/2,send_error/4, send_chunked_error/2]).
+-export([send_error/2,send_error/4, send_chunked_error/2]).
 -export([accepted_encodings/1,handle_request_int/5,validate_referer/1]).
--export([http_1_0_keep_alive/2]).
+
 -export([validate_host/1]).
 -export([validate_bind_address/1]).
 
@@ -69,7 +68,9 @@
     start_reponse/3,
     start_response_length/4,
     send_chunk/2,
-    etag_maybe/2
+    etag_maybe/2,
+    send_response/4,
+    start_chunked_response/3
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -486,62 +487,6 @@ verify_is_server_admin(#user_ctx{roles=Roles}) ->
     true -> ok;
     false -> throw({unauthorized, <<"You are not a server admin.">>})
     end.
-
-
-no_resp_conn_header([]) ->
-    true;
-no_resp_conn_header([{Hdr, _}|Rest]) ->
-    case string:to_lower(Hdr) of
-        "connection" -> false;
-        _ -> no_resp_conn_header(Rest)
-    end.
-
-http_1_0_keep_alive(Req, Headers) ->
-    KeepOpen = Req:should_close() == false,
-    IsHttp10 = Req:get(version) == {1, 0},
-    NoRespHeader = no_resp_conn_header(Headers),
-    case KeepOpen andalso IsHttp10 andalso NoRespHeader of
-        true -> [{"Connection", "Keep-Alive"} | Headers];
-        false -> Headers
-    end.
-
-start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
-    log_request(Req, Code),
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers1 = http_1_0_keep_alive(MochiReq, Headers),
-    Headers2 = Headers1 ++ server_header() ++
-               couch_httpd_auth:cookie_auth_header(Req, Headers1),
-    Headers3 = couch_httpd_cors:cors_headers(Req, Headers2),
-    Resp = MochiReq:respond({Code, Headers3, chunked}),
-    case MochiReq:get(method) of
-    'HEAD' -> throw({http_head_abort, Resp});
-    _ -> ok
-    end,
-    {ok, Resp}.
-
-
-send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Body) ->
-    log_request(Req, Code),
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers1 = http_1_0_keep_alive(MochiReq, Headers),
-    if Code >= 500 ->
-        couch_log:error("httpd ~p error response:~n ~s", [Code, Body]);
-    Code >= 400 ->
-        couch_log:debug("httpd ~p error response:~n ~s", [Code, Body]);
-    true -> ok
-    end,
-    Headers2 = Headers1 ++ server_header() ++
-               couch_httpd_auth:cookie_auth_header(Req, Headers1),
-    Headers3 = couch_httpd_cors:cors_headers(Req, Headers2),
-
-    {ok, MochiReq:respond({Code, Headers3, Body})}.
-
-
-
-
-
-
-
 
 error_info({Error, Reason}) when is_list(Reason) ->
     error_info({Error, ?l2b(Reason)});
