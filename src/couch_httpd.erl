@@ -49,7 +49,8 @@
 
 -export([
     server_header/0,
-    send_chunk/2
+    send_chunk/2,
+    last_chunk/1
 ]).
 
 -export([
@@ -141,8 +142,14 @@ start_json_response(Req, Code) ->
 
 start_json_response(Req, Code, Headers0) ->
     Headers1 = [timing(), reqid() | Headers0],
-    Headers2 = couch_httpd_cors:headers(Req, Headers1),
-    couch_httpd:start_json_response(Req, Code, Headers2).
+    initialize_jsonp(Req),
+    AllHeaders = maybe_add_default_headers(Req, Headers1),
+    {ok, Resp} = start_chunked_response(Req, Code, AllHeaders),
+    case start_jsonp() of
+        [] -> ok;
+        Start -> send_chunk(Resp, Start)
+    end,
+    {ok, Resp}.
 
 start_delayed_response(#delayed_resp{resp=nil}=DelayedResp) ->
     #delayed_resp{
@@ -201,10 +208,13 @@ send_json(Req, Code, Value) ->
 send_json(Req, Code, Headers0, Value) ->
     Headers1 = [timing(), reqid() | Headers0],
     Headers2 = couch_httpd_cors:headers(Req, Headers1),
-    couch_httpd:send_json(Req, Code, Headers2, Value).
+    initialize_jsonp(Req),
+    AllHeaders = maybe_add_default_headers(Req, Headers2),
+    Body = [start_jsonp(), ?JSON_ENCODE(Value), end_jsonp(), $\n],
+    send_response(Req, Code, AllHeaders, Body).
 
 send_redirect(Req, Path) ->
-    Headers0 = [{"Location", couch_httpd:absolute_uri(Req, Path)}],
+    Headers0 = [{"Location", absolute_uri(Req, Path)}],
     Headers1 = couch_httpd_cors:headers(Req, Headers0),
     send_response(Req, 301, Headers1, <<>>).
 
@@ -225,13 +235,14 @@ end_delayed_json_response(#delayed_resp{}=DelayedResp) ->
 close_delayed_json_object(Resp, Buffer, Terminator, 0) ->
     % Use a separate chunk to close the streamed array to maintain strict
     % compatibility with earlier versions. See COUCHDB-2724
-    {ok, R1} = couch_httpd:send_delayed_chunk(Resp, Buffer),
+    {ok, R1} = send_delayed_chunk(Resp, Buffer),
     send_delayed_chunk(R1, Terminator);
 close_delayed_json_object(Resp, Buffer, Terminator, _Threshold) ->
     send_delayed_chunk(Resp, [Buffer | Terminator]).
 
 end_json_response(Resp) ->
-    couch_httpd:end_json_response(Resp).
+    send_chunk(Resp, end_jsonp() ++ [$\n]),
+    last_chunk(Resp).
 
 send_error(_Req, {already_sent, Resp, _Error}) ->
     {ok, Resp};
@@ -367,7 +378,17 @@ json_body_obj(Httpd) ->
     end.
 
 validate_ctype(Req, Ctype) ->
-    couch_httpd:validate_ctype(Req, Ctype).
+    case header_value(Req, "Content-Type") of
+    undefined ->
+        throw({bad_ctype, "Content-Type must be "++Ctype});
+    ReqCtype ->
+        case string:tokens(ReqCtype, ";") of
+        [Ctype] -> ok;
+        [Ctype | _Rest] -> ok;
+        _Else ->
+            throw({bad_ctype, "Content-Type must be "++Ctype})
+        end
+    end.
 
 absolute_uri(#httpd{mochi_req=MochiReq, absolute_uri = undefined}, Path) ->
     XHost = config:get("httpd", "x_forwarded_host", "X-Forwarded-Host"),
@@ -416,7 +437,7 @@ etag_match(Req, CurrentEtag) when is_binary(CurrentEtag) ->
 
 etag_match(Req, CurrentEtag) ->
     EtagsToMatch = string:tokens(
-        couch_httpd:header_value(Req, "If-None-Match", ""), ", "),
+        header_value(Req, "If-None-Match", ""), ", "),
     lists:member(CurrentEtag, EtagsToMatch).
 
 etag_respond(Req, CurrentEtag, RespFun) ->
@@ -425,7 +446,7 @@ etag_respond(Req, CurrentEtag, RespFun) ->
         % the client has this in their cache.
         Headers0 = [{"Etag", CurrentEtag}],
         Headers1 = couch_httpd_cors:headers(Req, Headers0),
-        couch_httpd:send_response(Req, 304, Headers1, <<>>);
+        send_response(Req, 304, Headers1, <<>>);
     false ->
         % Run the function.
         RespFun()
@@ -463,7 +484,8 @@ chunked_response_buffer_size() ->
 %% Helper functions
 
 server_header() ->
-    couch_httpd:server_header().
+    [{"Server", "CouchDB/" ++ couch_server:get_version() ++
+                " (Erlang OTP/" ++ erlang:system_info(otp_release) ++ ")"}].
 
 
 send(Resp, Data) ->
@@ -473,6 +495,10 @@ send(Resp, Data) ->
 
 send_chunk(Resp, Data) ->
     Resp:write_chunk(Data),
+    {ok, Resp}.
+
+last_chunk(Resp) ->
+    Resp:write_chunk([]),
     {ok, Resp}.
 
 qs_value(Req, Key) ->
@@ -711,3 +737,74 @@ stack_trace_id(Stack) ->
 
 stack_hash(Stack) ->
     erlang:crc32(term_to_binary(Stack)).
+
+initialize_jsonp(Req) ->
+    case get(jsonp) of
+        undefined -> put(jsonp, qs_value(Req, "callback", no_jsonp));
+        _ -> ok
+    end,
+    case get(jsonp) of
+        no_jsonp -> [];
+        [] -> [];
+        CallBack ->
+            try
+                % make sure jsonp is configured on (default off)
+                case config:get("httpd", "allow_jsonp", "false") of
+                "true" ->
+                    validate_callback(CallBack);
+                _Else ->
+                    put(jsonp, no_jsonp)
+                end
+            catch
+                Error ->
+                    put(jsonp, no_jsonp),
+                    throw(Error)
+            end
+    end.
+
+start_jsonp() ->
+    case get(jsonp) of
+        no_jsonp -> [];
+        [] -> [];
+        CallBack -> ["/* CouchDB */", CallBack, "("]
+    end.
+
+end_jsonp() ->
+    case erlang:erase(jsonp) of
+        no_jsonp -> [];
+        [] -> [];
+        _ -> ");"
+    end.
+
+negotiate_content_type(_Req) ->
+    case get(jsonp) of
+        no_jsonp -> "application/json";
+        [] -> "application/json";
+        _Callback -> "application/javascript"
+    end.
+
+maybe_add_default_headers(ForRequest, ToHeaders) ->
+    DefaultHeaders = [
+        {"Cache-Control", "must-revalidate"},
+        {"Content-Type", negotiate_content_type(ForRequest)}
+    ],
+    lists:ukeymerge(1, lists:keysort(1, ToHeaders), DefaultHeaders).
+
+
+validate_callback(CallBack) when is_binary(CallBack) ->
+    validate_callback(binary_to_list(CallBack));
+validate_callback([]) ->
+    ok;
+validate_callback([Char | Rest]) ->
+    case Char of
+        _ when Char >= $a andalso Char =< $z -> ok;
+        _ when Char >= $A andalso Char =< $Z -> ok;
+        _ when Char >= $0 andalso Char =< $9 -> ok;
+        _ when Char == $. -> ok;
+        _ when Char == $_ -> ok;
+        _ when Char == $[ -> ok;
+        _ when Char == $] -> ok;
+        _ ->
+            throw({bad_request, invalid_callback})
+    end,
+    validate_callback(Rest).

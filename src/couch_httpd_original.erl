@@ -22,16 +22,27 @@
 
 -export([parse_form/1,json_body/1,json_body_obj/1,body/1]).
 -export([doc_etag/1, make_etag/1, etag_match/2, etag_respond/3, etag_maybe/2]).
--export([primary_header_value/2,partition/1,serve_file/3,serve_file/4, server_header/0]).
+-export([primary_header_value/2,partition/1,serve_file/3,serve_file/4]).
 -export([start_chunked_response/3,send_chunk/2,log_request/2]).
 -export([start_response_length/4, start_response/3, send/2]).
--export([start_json_response/2, start_json_response/3, end_json_response/1]).
 -export([send_response/4,send_method_not_allowed/2,send_error/2,send_error/4, send_redirect/2,send_chunked_error/2]).
--export([send_json/2,send_json/3,send_json/4,last_chunk/1,parse_multipart_request/3]).
--export([accepted_encodings/1,handle_request_int/5,validate_referer/1,validate_ctype/2]).
+-export([parse_multipart_request/3]).
+-export([accepted_encodings/1,handle_request_int/5,validate_referer/1]).
 -export([http_1_0_keep_alive/2]).
 -export([validate_host/1]).
 -export([validate_bind_address/1]).
+
+-import(couch_httpd, [
+    server_header/0,
+    last_chunk/1,
+    start_json_response/2,
+    start_json_response/3,
+    end_json_response/1,
+    send_json/2,
+    send_json/3,
+    send_json/4,
+    validate_ctype/2
+]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
 
@@ -408,18 +419,6 @@ validate_referer(Req) ->
         end
     end.
 
-validate_ctype(Req, Ctype) ->
-    case header_value(Req, "Content-Type") of
-    undefined ->
-        throw({bad_ctype, "Content-Type must be "++Ctype});
-    ReqCtype ->
-        case string:tokens(ReqCtype, ";") of
-        [Ctype] -> ok;
-        [Ctype | _Rest] -> ok;
-        _Else ->
-            throw({bad_ctype, "Content-Type must be "++Ctype})
-        end
-    end.
 
 % Utilities
 
@@ -692,9 +691,6 @@ send_chunk(Resp, Data) ->
     end,
     {ok, Resp}.
 
-last_chunk(Resp) ->
-    Resp:write_chunk([]),
-    {ok, Resp}.
 
 send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Body) ->
     log_request(Req, Code),
@@ -715,97 +711,10 @@ send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Body) ->
 send_method_not_allowed(Req, Methods) ->
     send_error(Req, 405, [{"Allow", Methods}], <<"method_not_allowed">>, ?l2b("Only " ++ Methods ++ " allowed")).
 
-send_json(Req, Value) ->
-    send_json(Req, 200, Value).
 
-send_json(Req, Code, Value) ->
-    send_json(Req, Code, [], Value).
 
-send_json(Req, Code, Headers, Value) ->
-    initialize_jsonp(Req),
-    AllHeaders = maybe_add_default_headers(Req, Headers),
-    Body = [start_jsonp(), ?JSON_ENCODE(Value), end_jsonp(), $\n],
-    send_response(Req, Code, AllHeaders, Body).
 
-start_json_response(Req, Code) ->
-    start_json_response(Req, Code, []).
 
-start_json_response(Req, Code, Headers) ->
-    initialize_jsonp(Req),
-    AllHeaders = maybe_add_default_headers(Req, Headers),
-    {ok, Resp} = start_chunked_response(Req, Code, AllHeaders),
-    case start_jsonp() of
-        [] -> ok;
-        Start -> send_chunk(Resp, Start)
-    end,
-    {ok, Resp}.
-
-end_json_response(Resp) ->
-    send_chunk(Resp, end_jsonp() ++ [$\n]),
-    last_chunk(Resp).
-
-maybe_add_default_headers(ForRequest, ToHeaders) ->
-    DefaultHeaders = [
-        {"Cache-Control", "must-revalidate"},
-        {"Content-Type", negotiate_content_type(ForRequest)}
-    ],
-    lists:ukeymerge(1, lists:keysort(1, ToHeaders), DefaultHeaders).
-
-initialize_jsonp(Req) ->
-    case get(jsonp) of
-        undefined -> put(jsonp, qs_value(Req, "callback", no_jsonp));
-        _ -> ok
-    end,
-    case get(jsonp) of
-        no_jsonp -> [];
-        [] -> [];
-        CallBack ->
-            try
-                % make sure jsonp is configured on (default off)
-                case config:get("httpd", "allow_jsonp", "false") of
-                "true" ->
-                    validate_callback(CallBack);
-                _Else ->
-                    put(jsonp, no_jsonp)
-                end
-            catch
-                Error ->
-                    put(jsonp, no_jsonp),
-                    throw(Error)
-            end
-    end.
-
-start_jsonp() ->
-    case get(jsonp) of
-        no_jsonp -> [];
-        [] -> [];
-        CallBack -> ["/* CouchDB */", CallBack, "("]
-    end.
-
-end_jsonp() ->
-    case erlang:erase(jsonp) of
-        no_jsonp -> [];
-        [] -> [];
-        _ -> ");"
-    end.
-
-validate_callback(CallBack) when is_binary(CallBack) ->
-    validate_callback(binary_to_list(CallBack));
-validate_callback([]) ->
-    ok;
-validate_callback([Char | Rest]) ->
-    case Char of
-        _ when Char >= $a andalso Char =< $z -> ok;
-        _ when Char >= $A andalso Char =< $Z -> ok;
-        _ when Char >= $0 andalso Char =< $9 -> ok;
-        _ when Char == $. -> ok;
-        _ when Char == $_ -> ok;
-        _ when Char == $[ -> ok;
-        _ when Char == $] -> ok;
-        _ ->
-            throw({bad_request, invalid_callback})
-    end,
-    validate_callback(Rest).
 
 
 error_info({Error, Reason}) when is_list(Reason) ->
@@ -946,16 +855,6 @@ send_chunked_error(Resp, Error) ->
 send_redirect(Req, Path) ->
      send_response(Req, 301, [{"Location", absolute_uri(Req, Path)}], <<>>).
 
-negotiate_content_type(_Req) ->
-    case get(jsonp) of
-        no_jsonp -> "application/json";
-        [] -> "application/json";
-        _Callback -> "application/javascript"
-    end.
-
-server_header() ->
-    [{"Server", "CouchDB/" ++ couch_server:get_version() ++
-                " (Erlang OTP/" ++ erlang:system_info(otp_release) ++ ")"}].
 
 
 -record(mp, {boundary, buffer, data_fun, callback}).
