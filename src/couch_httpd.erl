@@ -116,6 +116,7 @@
 }).
 
 start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Length) ->
+    log_request(Req, Code),
     couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
     Headers1 = Headers0 ++ server_header() ++
 	couch_httpd_auth:cookie_auth_header(Req, Headers0),
