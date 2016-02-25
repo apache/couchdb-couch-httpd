@@ -19,7 +19,7 @@
 -export([verify_is_server_admin/1,error_info/1]).
 -export([make_fun_spec_strs/1]).
 
--export([etag_match/2, etag_respond/3, etag_maybe/2]).
+-export([etag_match/2, etag_maybe/2]).
 
 -export([start_chunked_response/3,send_chunk/2]).
 -export([start_response_length/4, start_response/3]).
@@ -65,7 +65,8 @@
     send_redirect/2,
     absolute_uri/2,
     body/1,
-    log_request/2
+    log_request/2,
+    etag_respond/3
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -482,16 +483,6 @@ etag_match(Req, CurrentEtag) ->
     EtagsToMatch = string:tokens(
         header_value(Req, "If-None-Match", ""), ", "),
     lists:member(CurrentEtag, EtagsToMatch).
-
-etag_respond(Req, CurrentEtag, RespFun) ->
-    case etag_match(Req, CurrentEtag) of
-    true ->
-        % the client has this in their cache.
-        send_response(Req, 304, [{"ETag", CurrentEtag}], <<>>);
-    false ->
-        % Run the function.
-        RespFun()
-    end.
 
 etag_maybe(Req, RespFun) ->
     try
