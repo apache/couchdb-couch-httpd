@@ -19,7 +19,6 @@
 -export([verify_is_server_admin/1,error_info/1]).
 -export([make_fun_spec_strs/1]).
 
--export([etag_maybe/2]).
 
 -export([start_chunked_response/3]).
 -export([send_response/4,send_error/2,send_error/4, send_chunked_error/2]).
@@ -69,7 +68,8 @@
     etag_match/2,
     start_reponse/3,
     start_response_length/4,
-    send_chunk/2
+    send_chunk/2,
+    etag_maybe/2
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -478,14 +478,6 @@ host_for_request(#httpd{mochi_req=MochiReq}) ->
         Value -> Value
     end.
 
-
-etag_maybe(Req, RespFun) ->
-    try
-        RespFun()
-    catch
-        throw:{etag_match, ETag} ->
-            send_response(Req, 304, [{"ETag", ETag}], <<>>)
-    end.
 
 verify_is_server_admin(#httpd{user_ctx=UserCtx}) ->
     verify_is_server_admin(UserCtx);

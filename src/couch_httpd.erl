@@ -93,6 +93,7 @@
     doc_etag/1,
     make_etag/1,
     etag_match/2,
+    etag_maybe/2,
     etag_respond/3
 ]).
 
@@ -459,6 +460,14 @@ etag_match(Req, CurrentEtag) ->
     EtagsToMatch = string:tokens(
         header_value(Req, "If-None-Match", ""), ", "),
     lists:member(CurrentEtag, EtagsToMatch).
+
+etag_maybe(Req, RespFun) ->
+    try
+        RespFun()
+    catch
+        throw:{etag_match, ETag} ->
+            send_response(Req, 304, [{"ETag", ETag}], <<>>)
+    end.
 
 etag_respond(Req, CurrentEtag, RespFun) ->
     case etag_match(Req, CurrentEtag) of
