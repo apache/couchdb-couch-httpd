@@ -86,7 +86,8 @@
 ]).
 
 -export([
-    validate_ctype/2
+    validate_ctype/2,
+    validate_host/1
 ]).
 
 -export([
@@ -415,6 +416,21 @@ validate_ctype(Req, Ctype) ->
         _Else ->
             throw({bad_ctype, "Content-Type must be "++Ctype})
         end
+    end.
+
+validate_host(#httpd{} = Req) ->
+    case config:get_boolean("httpd", "validate_host", false) of
+        true ->
+            Host = hostname(Req),
+            ValidHosts = valid_hosts(),
+            case lists:member(Host, ValidHosts) of
+                true ->
+                    ok;
+                false ->
+                    throw({bad_request, <<"Invalid host header">>})
+            end;
+        false ->
+            ok
     end.
 
 host_for_request(#httpd{mochi_req = MochiReq}) ->
@@ -779,6 +795,20 @@ maybe_decompress(Httpd, Body) ->
     Else ->
         throw({bad_ctype, [Else, " is not a supported content encoding."]})
     end.
+
+hostname(#httpd{} = Req) ->
+    case header_value(Req, "Host") of
+        undefined ->
+            undefined;
+        Host ->
+            [Name | _] = re:split(Host, ":[0-9]+$", [{parts, 2}, {return, list}]),
+            Name
+    end.
+
+valid_hosts() ->
+    List = config:get("httpd", "valid_hosts", ""),
+    re:split(List, ",", [{return, list}]).
+
 
 log_error_with_stack_trace({bad_request, _, _}) ->
     ok;

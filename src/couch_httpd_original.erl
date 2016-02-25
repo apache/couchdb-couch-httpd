@@ -23,7 +23,6 @@
 -export([send_error/2,send_error/4, send_chunked_error/2]).
 -export([accepted_encodings/1,handle_request_int/5,validate_referer/1]).
 
--export([validate_host/1]).
 -export([validate_bind_address/1]).
 
 -import(couch_httpd, [
@@ -70,7 +69,8 @@
     send_chunk/2,
     etag_maybe/2,
     send_response/4,
-    start_chunked_response/3
+    start_chunked_response/3,
+    validate_host/1
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -386,33 +386,6 @@ handle_request_int(MochiReq, DefaultFun,
     couch_stats:increment_counter([couchdb, httpd, requests]),
     {ok, Resp}.
 
-validate_host(#httpd{} = Req) ->
-    case config:get_boolean("httpd", "validate_host", false) of
-        true ->
-            Host = hostname(Req),
-            ValidHosts = valid_hosts(),
-            case lists:member(Host, ValidHosts) of
-                true ->
-                    ok;
-                false ->
-                    throw({bad_request, <<"Invalid host header">>})
-            end;
-        false ->
-            ok
-    end.
-
-hostname(#httpd{} = Req) ->
-    case header_value(Req, "Host") of
-        undefined ->
-            undefined;
-        Host ->
-            [Name | _] = re:split(Host, ":[0-9]+$", [{parts, 2}, {return, list}]),
-            Name
-    end.
-
-valid_hosts() ->
-    List = config:get("httpd", "valid_hosts", ""),
-    re:split(List, ",", [{return, list}]).
 
 check_request_uri_length(Uri) ->
     check_request_uri_length(Uri, config:get("httpd", "max_uri_length")).
