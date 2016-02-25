@@ -80,6 +80,7 @@
     body/1,
     json_body/1,
     json_body_obj/1,
+    accepted_encodings/1,
     verify_is_server_admin/1,
     get_delayed_req/1,
     chunked_response_buffer_size/0
@@ -403,6 +404,16 @@ json_body_obj(Httpd) ->
         {Props} -> {Props};
         _Else ->
             throw({bad_request, "Request body must be a JSON object"})
+    end.
+
+accepted_encodings(#httpd{mochi_req=MochiReq}) ->
+    case MochiReq:accepted_encodings(["gzip", "identity"]) of
+    bad_accept_encoding_value ->
+        throw(bad_accept_encoding_value);
+    [] ->
+        throw(unacceptable_encoding);
+    EncList ->
+        EncList
     end.
 
 validate_ctype(Req, Ctype) ->

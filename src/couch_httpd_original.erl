@@ -21,7 +21,7 @@
 
 
 -export([send_error/2,send_error/4, send_chunked_error/2]).
--export([accepted_encodings/1,handle_request_int/5,validate_referer/1]).
+-export([handle_request_int/5,validate_referer/1]).
 
 -export([validate_bind_address/1]).
 
@@ -70,7 +70,8 @@
     etag_maybe/2,
     send_response/4,
     start_chunked_response/3,
-    validate_host/1
+    validate_host/1,
+    accepted_encodings/1
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -424,16 +425,6 @@ validate_referer(Req) ->
 
 % Utilities
 
-
-accepted_encodings(#httpd{mochi_req=MochiReq}) ->
-    case MochiReq:accepted_encodings(["gzip", "identity"]) of
-    bad_accept_encoding_value ->
-        throw(bad_accept_encoding_value);
-    [] ->
-        throw(unacceptable_encoding);
-    EncList ->
-        EncList
-    end.
 
 host_for_request(#httpd{mochi_req=MochiReq}) ->
     XHost = config:get("httpd", "x_forwarded_host", "X-Forwarded-Host"),
