@@ -15,17 +15,17 @@
 
 -export([start_link/0, start_link/1, stop/0, handle_request/5]).
 
--export([header_value/2,header_value/3,qs_value/2,qs_value/3,qs/1,qs_json_value/3]).
--export([path/1,absolute_uri/2,body_length/1]).
--export([verify_is_server_admin/1,unquote/1,quote/1,recv/2,recv_chunked/4,error_info/1]).
+
+-export([absolute_uri/2]).
+-export([verify_is_server_admin/1,error_info/1]).
 -export([make_fun_spec_strs/1]).
 
--export([parse_form/1,json_body/1,json_body_obj/1,body/1]).
--export([doc_etag/1, make_etag/1, etag_match/2, etag_respond/3, etag_maybe/2]).
--export([primary_header_value/2,partition/1,serve_file/3,serve_file/4]).
+-export([body/1]).
+-export([etag_match/2, etag_respond/3, etag_maybe/2]).
+
 -export([start_chunked_response/3,send_chunk/2,log_request/2]).
--export([start_response_length/4, start_response/3, send/2]).
--export([send_response/4,send_method_not_allowed/2,send_error/2,send_error/4, send_redirect/2,send_chunked_error/2]).
+-export([start_response_length/4, start_response/3]).
+-export([send_response/4,send_error/2,send_error/4, send_chunked_error/2]).
 -export([parse_multipart_request/3]).
 -export([accepted_encodings/1,handle_request_int/5,validate_referer/1]).
 -export([http_1_0_keep_alive/2]).
@@ -41,7 +41,31 @@
     send_json/2,
     send_json/3,
     send_json/4,
-    validate_ctype/2
+    validate_ctype/2,
+    header_value/2,
+    header_value/3,
+    qs_value/2,
+    qs_value/3,
+    qs/1,
+    qs_json_value/3,
+    path/1,
+    body_length/1,
+    unquote/1,
+    quote/1,
+    recv/2,
+    recv_chunked/4,
+    json_body/1,
+    json_body_obj/1,
+    parse_form/1,
+    doc_etag/1,
+    make_etag/1,
+    primary_header_value/2,
+    partition/1,
+    serve_file/3,
+    serve_file/4,
+    send/2,
+    send_method_not_allowed/2,
+    send_redirect/2
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -422,20 +446,6 @@ validate_referer(Req) ->
 
 % Utilities
 
-partition(Path) ->
-    mochiweb_util:partition(Path, "/").
-
-header_value(#httpd{mochi_req=MochiReq}, Key) ->
-    MochiReq:get_header_value(Key).
-
-header_value(#httpd{mochi_req=MochiReq}, Key, Default) ->
-    case MochiReq:get_header_value(Key) of
-    undefined -> Default;
-    Value -> Value
-    end.
-
-primary_header_value(#httpd{mochi_req=MochiReq}, Key) ->
-    MochiReq:get_primary_header_value(Key).
 
 accepted_encodings(#httpd{mochi_req=MochiReq}) ->
     case MochiReq:accepted_encodings(["gzip", "identity"]) of
@@ -446,38 +456,6 @@ accepted_encodings(#httpd{mochi_req=MochiReq}) ->
     EncList ->
         EncList
     end.
-
-serve_file(Req, RelativePath, DocumentRoot) ->
-    serve_file(Req, RelativePath, DocumentRoot, []).
-
-serve_file(#httpd{mochi_req=MochiReq}=Req, RelativePath, DocumentRoot,
-           ExtraHeaders) ->
-    log_request(Req, 200),
-    ResponseHeaders = server_header()
-        ++ couch_httpd_auth:cookie_auth_header(Req, [])
-        ++ ExtraHeaders,
-    ResponseHeaders1 = couch_httpd_cors:cors_headers(Req, ResponseHeaders),
-    {ok, MochiReq:serve_file(RelativePath, DocumentRoot, ResponseHeaders1)}.
-
-qs_value(Req, Key) ->
-    qs_value(Req, Key, undefined).
-
-qs_value(Req, Key, Default) ->
-    couch_util:get_value(Key, qs(Req), Default).
-
-qs_json_value(Req, Key, Default) ->
-    case qs_value(Req, Key, Default) of
-    Default ->
-        Default;
-    Result ->
-        ?JSON_DECODE(Result)
-    end.
-
-qs(#httpd{mochi_req=MochiReq}) ->
-    MochiReq:parse_qs().
-
-path(#httpd{mochi_req=MochiReq}) ->
-    MochiReq:get(path).
 
 host_for_request(#httpd{mochi_req=MochiReq}) ->
     XHost = config:get("httpd", "x_forwarded_host", "X-Forwarded-Host"),
@@ -514,26 +492,6 @@ absolute_uri(#httpd{mochi_req=MochiReq}=Req, Path) ->
              end,
     Scheme ++ "://" ++ Host ++ Path.
 
-unquote(UrlEncodedString) ->
-    mochiweb_util:unquote(UrlEncodedString).
-
-quote(UrlDecodedString) ->
-    mochiweb_util:quote_plus(UrlDecodedString).
-
-parse_form(#httpd{mochi_req=MochiReq}) ->
-    mochiweb_multipart:parse_form(MochiReq).
-
-recv(#httpd{mochi_req=MochiReq}, Len) ->
-    MochiReq:recv(Len).
-
-recv_chunked(#httpd{mochi_req=MochiReq}, MaxChunkSize, ChunkFun, InitState) ->
-    % Fun is called once with each chunk
-    % Fun({Length, Binary}, State)
-    % called with Length == 0 on the last time.
-    MochiReq:stream_body(MaxChunkSize, ChunkFun, InitState).
-
-body_length(#httpd{mochi_req=MochiReq}) ->
-    MochiReq:get(body_length).
 
 body(#httpd{mochi_req=MochiReq, req_body=undefined}) ->
     MaxSize = list_to_integer(
@@ -541,22 +499,6 @@ body(#httpd{mochi_req=MochiReq, req_body=undefined}) ->
     MochiReq:recv_body(MaxSize);
 body(#httpd{req_body=ReqBody}) ->
     ReqBody.
-
-json_body(Httpd) ->
-    case body(Httpd) of
-        undefined ->
-            throw({bad_request, "Missing request body"});
-        Body ->
-            ?JSON_DECODE(maybe_decompress(Httpd, Body))
-    end.
-
-json_body_obj(Httpd) ->
-    case json_body(Httpd) of
-        {Props} -> {Props};
-        _Else ->
-            throw({bad_request, "Request body must be a JSON object"})
-    end.
-
 
 maybe_decompress(Httpd, Body) ->
     case header_value(Httpd, "Content-Encoding", "identity") of
@@ -568,12 +510,6 @@ maybe_decompress(Httpd, Body) ->
         throw({bad_ctype, [Else, " is not a supported content encoding."]})
     end.
 
-doc_etag(#doc{revs={Start, [DiskRev|_]}}) ->
-    "\"" ++ ?b2l(couch_doc:rev_to_str({Start, DiskRev})) ++ "\"".
-
-make_etag(Term) ->
-    <<SigInt:128/integer>> = couch_crypto:hash(md5, term_to_binary(Term)),
-    iolist_to_binary([$", io_lib:format("~.36B", [SigInt]), $"]).
 
 etag_match(Req, CurrentEtag) when is_binary(CurrentEtag) ->
     etag_match(Req, binary_to_list(CurrentEtag));
@@ -649,9 +585,6 @@ start_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
     end,
     {ok, Resp}.
 
-send(Resp, Data) ->
-    Resp:send(Data),
-    {ok, Resp}.
 
 no_resp_conn_header([]) ->
     true;
@@ -708,8 +641,6 @@ send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Body) ->
 
     {ok, MochiReq:respond({Code, Headers3, Body})}.
 
-send_method_not_allowed(Req, Methods) ->
-    send_error(Req, 405, [{"Allow", Methods}], <<"method_not_allowed">>, ?l2b("Only " ++ Methods ++ " allowed")).
 
 
 
@@ -839,10 +770,6 @@ send_error(Req, Code, Headers, ErrorStr, ReasonStr) ->
         {[{<<"error">>,  ErrorStr},
          {<<"reason">>, ReasonStr}]}).
 
-% give the option for list functions to output html or other raw errors
-send_chunked_error(Resp, {_Error, {[{<<"body">>, Reason}]}}) ->
-    send_chunk(Resp, Reason),
-    last_chunk(Resp);
 
 send_chunked_error(Resp, Error) ->
     {Code, ErrorStr, ReasonStr} = error_info(Error),
@@ -852,8 +779,6 @@ send_chunked_error(Resp, Error) ->
     send_chunk(Resp, ?l2b([$\n,?JSON_ENCODE(JsonError),$\n])),
     last_chunk(Resp).
 
-send_redirect(Req, Path) ->
-     send_response(Req, 301, [{"Location", absolute_uri(Req, Path)}], <<>>).
 
 
 
