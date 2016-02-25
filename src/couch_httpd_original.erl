@@ -19,7 +19,6 @@
 -export([verify_is_server_admin/1,error_info/1]).
 -export([make_fun_spec_strs/1]).
 
--export([body/1]).
 -export([etag_match/2, etag_respond/3, etag_maybe/2]).
 
 -export([start_chunked_response/3,send_chunk/2,log_request/2]).
@@ -65,7 +64,8 @@
     send/2,
     send_method_not_allowed/2,
     send_redirect/2,
-    absolute_uri/2
+    absolute_uri/2,
+    body/1
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -473,13 +473,6 @@ host_for_request(#httpd{mochi_req=MochiReq}) ->
             end;
         Value -> Value
     end.
-
-body(#httpd{mochi_req=MochiReq, req_body=undefined}) ->
-    MaxSize = list_to_integer(
-        config:get("couchdb", "max_document_size", "4294967296")),
-    MochiReq:recv_body(MaxSize);
-body(#httpd{req_body=ReqBody}) ->
-    ReqBody.
 
 maybe_decompress(Httpd, Body) ->
     case header_value(Httpd, "Content-Encoding", "identity") of
