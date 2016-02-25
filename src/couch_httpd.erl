@@ -390,19 +390,25 @@ validate_ctype(Req, Ctype) ->
         end
     end.
 
-absolute_uri(#httpd{mochi_req=MochiReq, absolute_uri = undefined}, Path) ->
+host_for_request(#httpd{mochi_req = MochiReq}) ->
     XHost = config:get("httpd", "x_forwarded_host", "X-Forwarded-Host"),
-    Host = case MochiReq:get_header_value(XHost) of
+    case MochiReq:get_header_value(XHost) of
         undefined ->
             case MochiReq:get_header_value("Host") of
                 undefined ->
-                    {ok, {Address, Port}} = inet:sockname(MochiReq:get(socket)),
+                    {ok, {Address, Port}} = case MochiReq:get(socket) of
+                        {ssl, SslSocket} -> ssl:sockname(SslSocket);
+                        Socket -> inet:sockname(Socket)
+                    end,
                     inet_parse:ntoa(Address) ++ ":" ++ integer_to_list(Port);
                 Value1 ->
                     Value1
             end;
         Value -> Value
-    end,
+    end.
+
+absolute_uri(#httpd{mochi_req=MochiReq, absolute_uri = undefined} = Req, Path) ->
+    Host = host_for_request(Req),
     XSsl = config:get("httpd", "x_forwarded_ssl", "X-Forwarded-Ssl"),
     Scheme = case MochiReq:get_header_value(XSsl) of
         "on" -> "https";
