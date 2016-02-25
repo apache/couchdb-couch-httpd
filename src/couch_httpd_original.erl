@@ -16,7 +16,6 @@
 -export([start_link/0, start_link/1, stop/0, handle_request/5]).
 
 
--export([absolute_uri/2]).
 -export([verify_is_server_admin/1,error_info/1]).
 -export([make_fun_spec_strs/1]).
 
@@ -65,7 +64,8 @@
     serve_file/4,
     send/2,
     send_method_not_allowed/2,
-    send_redirect/2
+    send_redirect/2,
+    absolute_uri/2
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -473,25 +473,6 @@ host_for_request(#httpd{mochi_req=MochiReq}) ->
             end;
         Value -> Value
     end.
-
-absolute_uri(#httpd{mochi_req=MochiReq}=Req, Path) ->
-    Host = host_for_request(Req),
-    XSsl = config:get("httpd", "x_forwarded_ssl", "X-Forwarded-Ssl"),
-    Scheme = case MochiReq:get_header_value(XSsl) of
-                 "on" -> "https";
-                 _ ->
-                     XProto = config:get("httpd", "x_forwarded_proto", "X-Forwarded-Proto"),
-                     case MochiReq:get_header_value(XProto) of
-                         %% Restrict to "https" and "http" schemes only
-                         "https" -> "https";
-                         _ -> case MochiReq:get(scheme) of
-                                  https -> "https";
-                                  http -> "http"
-                              end
-                     end
-             end,
-    Scheme ++ "://" ++ Host ++ Path.
-
 
 body(#httpd{mochi_req=MochiReq, req_body=undefined}) ->
     MaxSize = list_to_integer(
