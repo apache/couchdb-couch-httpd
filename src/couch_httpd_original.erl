@@ -21,7 +21,7 @@
 
 -export([etag_match/2, etag_respond/3, etag_maybe/2]).
 
--export([start_chunked_response/3,send_chunk/2,log_request/2]).
+-export([start_chunked_response/3,send_chunk/2]).
 -export([start_response_length/4, start_response/3]).
 -export([send_response/4,send_error/2,send_error/4, send_chunked_error/2]).
 -export([parse_multipart_request/3]).
@@ -65,7 +65,8 @@
     send_method_not_allowed/2,
     send_redirect/2,
     absolute_uri/2,
-    body/1
+    body/1,
+    log_request/2
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -507,20 +508,6 @@ verify_is_server_admin(#user_ctx{roles=Roles}) ->
     case lists:member(<<"_admin">>, Roles) of
     true -> ok;
     false -> throw({unauthorized, <<"You are not a server admin.">>})
-    end.
-
-log_request(#httpd{mochi_req=MochiReq,peer=Peer}=Req, Code) ->
-    case erlang:get(dont_log_request) of
-        true ->
-            ok;
-        _ ->
-            couch_log:notice("~s - - ~s ~s ~B", [
-                Peer,
-                MochiReq:get(method),
-                MochiReq:get(raw_path),
-                Code
-            ]),
-            gen_event:notify(couch_plugin, {log_request, Req, Code})
     end.
 
 start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Length) ->

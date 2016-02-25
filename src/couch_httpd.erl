@@ -48,6 +48,7 @@
 ]).
 
 -export([
+    log_request/2,
     server_header/0,
     send_chunk/2,
     last_chunk/1
@@ -486,6 +487,20 @@ chunked_response_buffer_size() ->
 
 %% ================
 %% Helper functions
+
+log_request(#httpd{mochi_req=MochiReq,peer=Peer}=Req, Code) ->
+    case erlang:get(dont_log_request) of
+        true ->
+            ok;
+        _ ->
+            couch_log:notice("~s - - ~s ~s ~B", [
+                Peer,
+                MochiReq:get(method),
+                MochiReq:get(raw_path),
+                Code
+            ]),
+            gen_event:notify(couch_plugin, {log_request, Req, Code})
+    end.
 
 server_header() ->
     [{"Server", "CouchDB/" ++ couch_server:get_version() ++
