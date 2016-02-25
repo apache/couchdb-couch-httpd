@@ -19,7 +19,7 @@
 -export([verify_is_server_admin/1,error_info/1]).
 -export([make_fun_spec_strs/1]).
 
--export([etag_match/2, etag_maybe/2]).
+-export([etag_maybe/2]).
 
 -export([start_chunked_response/3,send_chunk/2]).
 -export([start_response_length/4, start_response/3]).
@@ -66,7 +66,8 @@
     absolute_uri/2,
     body/1,
     log_request/2,
-    etag_respond/3
+    etag_respond/3,
+    etag_match/2
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -475,14 +476,6 @@ host_for_request(#httpd{mochi_req=MochiReq}) ->
         Value -> Value
     end.
 
-
-etag_match(Req, CurrentEtag) when is_binary(CurrentEtag) ->
-    etag_match(Req, binary_to_list(CurrentEtag));
-
-etag_match(Req, CurrentEtag) ->
-    EtagsToMatch = string:tokens(
-        header_value(Req, "If-None-Match", ""), ", "),
-    lists:member(CurrentEtag, EtagsToMatch).
 
 etag_maybe(Req, RespFun) ->
     try
