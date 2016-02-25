@@ -21,7 +21,7 @@
 
 -export([etag_maybe/2]).
 
--export([start_chunked_response/3,send_chunk/2]).
+-export([start_chunked_response/3]).
 -export([send_response/4,send_error/2,send_error/4, send_chunked_error/2]).
 -export([accepted_encodings/1,handle_request_int/5,validate_referer/1]).
 -export([http_1_0_keep_alive/2]).
@@ -68,7 +68,8 @@
     etag_respond/3,
     etag_match/2,
     start_reponse/3,
-    start_response_length/4
+    start_response_length/4,
+    send_chunk/2
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -523,13 +524,6 @@ start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
     case MochiReq:get(method) of
     'HEAD' -> throw({http_head_abort, Resp});
     _ -> ok
-    end,
-    {ok, Resp}.
-
-send_chunk(Resp, Data) ->
-    case iolist_size(Data) of
-    0 -> ok; % do nothing
-    _ -> Resp:write_chunk(Data)
     end,
     {ok, Resp}.
 
