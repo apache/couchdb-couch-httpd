@@ -264,14 +264,25 @@ catch_error(HttpReq, exit, {mochiweb_recv_error, E}) ->
         MochiReq:get(raw_path),
         E]),
     exit(normal);
+catch_error(_HttpReq, exit, normal) ->
+    exit(normal);
 catch_error(HttpReq, exit, {uri_too_long, _}) ->
     couch_httpd:send_error(HttpReq, request_uri_too_long);
 catch_error(HttpReq, exit, {body_too_large, _}) ->
     couch_httpd:send_error(HttpReq, request_entity_too_large);
+catch_error(HttpReq, throw, unacceptable_encoding) ->
+    couch_httpd:send_error(HttpReq, {not_acceptable, "unsupported encoding"});
+catch_error(HttpReq, throw, bad_accept_encoding_value) ->
+    couch_httpd:send_error(HttpReq, bad_request);
 catch_error(HttpReq, throw, Error) ->
     couch_httpd:send_error(HttpReq, Error);
 catch_error(HttpReq, error, database_does_not_exist) ->
     couch_httpd:send_error(HttpReq, database_does_not_exist);
+catch_error(HttpReq, exit, snappy_nif_not_loaded) ->
+    ErrorReason = "To access the database or view index, Apache CouchDB"
+        " must be built with Erlang OTP R13B04 or higher.",
+    couch_log:error("~s", [ErrorReason]),
+    couch_httpd:send_error(HttpReq, {bad_otp_release, ErrorReason});
 catch_error(HttpReq, Tag, Error) ->
     Stack = erlang:get_stacktrace(),
     % TODO improve logging and metrics collection for client disconnects
