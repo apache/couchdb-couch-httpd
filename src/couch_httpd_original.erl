@@ -414,23 +414,6 @@ increment_method_stats(Method) ->
 % Utilities
 
 
-host_for_request(#httpd{mochi_req=MochiReq}) ->
-    XHost = config:get("httpd", "x_forwarded_host", "X-Forwarded-Host"),
-    case MochiReq:get_header_value(XHost) of
-        undefined ->
-            case MochiReq:get_header_value("Host") of
-                undefined ->
-                    {ok, {Address, Port}} = case MochiReq:get(socket) of
-                        {ssl, SslSocket} -> ssl:sockname(SslSocket);
-                        Socket -> inet:sockname(Socket)
-                    end,
-                    inet_parse:ntoa(Address) ++ ":" ++ integer_to_list(Port);
-                Value1 ->
-                    Value1
-            end;
-        Value -> Value
-    end.
-
 
 verify_is_server_admin(#httpd{user_ctx=UserCtx}) ->
     verify_is_server_admin(UserCtx);
