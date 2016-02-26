@@ -170,7 +170,8 @@ handle_request_int(Stack, MochiReq) ->
         status = Status,
         response = Resp,
         nonce = HttpReq2#httpd.nonce,
-        reason = Reason
+        reason = Reason,
+        stack = Stack
     },
 
     case after_request(HttpReq2, HttpResp) of

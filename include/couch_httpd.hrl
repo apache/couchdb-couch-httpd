@@ -18,5 +18,6 @@
     status,
     nonce,
     should_log = true,
-    reason
+    reason,
+    stack
 }).
