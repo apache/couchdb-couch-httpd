@@ -18,7 +18,7 @@
     handle_error/1
 ]).
 
--define(SERVICE_ID, chttpd).
+-define(SERVICE_ID, couch_httpd).
 
 -include_lib("couch/include/couch_db.hrl").
 
