@@ -19,7 +19,7 @@
 -export([make_fun_spec_strs/1]).
 
 
--export([send_error/2,send_error/4, send_chunked_error/2]).
+-export([send_chunked_error/2]).
 -export([handle_request_int/5]).
 
 
@@ -73,7 +73,9 @@
     validate_referer/1,
     validate_bind_address/1,
     verify_is_server_admin/1,
-    error_info/1
+    error_info/1,
+    send_error/2,
+    send_error/4
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -472,23 +474,6 @@ error_headers(#httpd{mochi_req=MochiReq}=Req, Code, ErrorStr, ReasonStr) ->
     true ->
         {Code, []}
     end.
-
-send_error(_Req, {already_sent, Resp, _Error}) ->
-    {ok, Resp};
-
-send_error(Req, Error) ->
-    {Code, ErrorStr, ReasonStr} = error_info(Error),
-    {Code1, Headers} = error_headers(Req, Code, ErrorStr, ReasonStr),
-    send_error(Req, Code1, Headers, ErrorStr, ReasonStr).
-
-send_error(Req, Code, ErrorStr, ReasonStr) ->
-    send_error(Req, Code, [], ErrorStr, ReasonStr).
-
-send_error(Req, Code, Headers, ErrorStr, ReasonStr) ->
-    send_json(Req, Code, Headers,
-        {[{<<"error">>,  ErrorStr},
-         {<<"reason">>, ReasonStr}]}).
-
 
 send_chunked_error(Resp, Error) ->
     {Code, ErrorStr, ReasonStr} = error_info(Error),
