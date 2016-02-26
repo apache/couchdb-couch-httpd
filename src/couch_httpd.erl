@@ -201,12 +201,7 @@ start_delayed_json_response(Req, Code, Headers, FirstChunk) ->
 
 send_response(#httpd{}=Req, Code, Headers, Body) ->
     Resp = handle_response(Req, Code, Headers, Body, respond),
-    if Code >= 500 ->
-        couch_log:error("httpd ~p error response:~n ~s", [Code, Body]);
-    Code >= 400 ->
-        couch_log:debug("httpd ~p error response:~n ~s", [Code, Body]);
-    true -> ok
-    end,
+    maybe_log_response(Code, Body),
     {ok, Resp}.
 
 send_json(Req, Value) ->
@@ -948,6 +943,13 @@ respond_(#httpd{mochi_req = MochiReq}, Code, Headers, _Args, start_response) ->
     MochiReq:start_response({Code, Headers});
 respond_(#httpd{mochi_req = MochiReq}, Code, Headers, Args, Type) ->
     MochiReq:Type({Code, Headers, Args}).
+
+maybe_log_response(Code, Body) when Code >= 500 ->
+    couch_log:error("httpd ~p error response:~n ~s", [Code, Body]);
+maybe_log_response(Code, Body) when Code >= 400 ->
+    couch_log:debug("httpd ~p error response:~n ~s", [Code, Body]);
+maybe_log_response(_, _) ->
+    ok.
 
 %%%%%%%% module tests below %%%%%%%%
 
