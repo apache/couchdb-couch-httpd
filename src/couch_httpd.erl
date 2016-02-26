@@ -322,11 +322,8 @@ serve_file(Req, RelativePath, DocumentRoot) ->
     serve_file(Req, RelativePath, DocumentRoot, []).
 
 serve_file(#httpd{mochi_req=MochiReq}=Req, RelativePath, DocumentRoot,
-           ExtraHeaders) ->
-    Headers = server_header() ++
-	couch_httpd_auth:cookie_auth_header(Req, []) ++
-	ExtraHeaders,
-    Headers1 = couch_httpd_cors:headers(Req, Headers),
+        Headers0) ->
+    Headers1 = basic_headers(Req, Headers0),
     {ok, MochiReq:serve_file(RelativePath, DocumentRoot, Headers1)}.
 
 path(#httpd{mochi_req=MochiReq}) ->
