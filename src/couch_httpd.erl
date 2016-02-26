@@ -89,7 +89,8 @@
 -export([
     validate_ctype/2,
     validate_referer/1,
-    validate_host/1
+    validate_host/1,
+    validate_bind_address/1
 ]).
 
 -export([
@@ -457,6 +458,13 @@ validate_host(#httpd{} = Req) ->
             end;
         false ->
             ok
+    end.
+
+validate_bind_address(any) -> ok;
+validate_bind_address(Address) ->
+    case inet_parse:address(Address) of
+        {ok, _} -> ok;
+        _ -> throw({error, invalid_bind_address})
     end.
 
 host_for_request(#httpd{mochi_req = MochiReq}) ->

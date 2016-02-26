@@ -23,7 +23,6 @@
 -export([send_error/2,send_error/4, send_chunked_error/2]).
 -export([handle_request_int/5]).
 
--export([validate_bind_address/1]).
 
 -import(couch_httpd, [
     server_header/0,
@@ -72,7 +71,8 @@
     start_chunked_response/3,
     validate_host/1,
     accepted_encodings/1,
-    validate_referer/1
+    validate_referer/1,
+    validate_bind_address/1
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -558,12 +558,6 @@ send_chunked_error(Resp, Error) ->
 
 
 
-validate_bind_address(any) -> ok;
-validate_bind_address(Address) ->
-    case inet_parse:address(Address) of
-        {ok, _} -> ok;
-        _ -> throw({error, invalid_bind_address})
-    end.
 
 
 %%%%%%%% module tests below %%%%%%%%
