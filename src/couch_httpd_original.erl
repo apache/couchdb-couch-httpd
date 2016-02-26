@@ -16,7 +16,7 @@
 -export([start_link/0, start_link/1, stop/0, handle_request/5]).
 
 
--export([verify_is_server_admin/1,error_info/1]).
+-export([error_info/1]).
 -export([make_fun_spec_strs/1]).
 
 
@@ -72,7 +72,8 @@
     validate_host/1,
     accepted_encodings/1,
     validate_referer/1,
-    validate_bind_address/1
+    validate_bind_address/1,
+    verify_is_server_admin/1
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -415,13 +416,6 @@ increment_method_stats(Method) ->
 
 
 
-verify_is_server_admin(#httpd{user_ctx=UserCtx}) ->
-    verify_is_server_admin(UserCtx);
-verify_is_server_admin(#user_ctx{roles=Roles}) ->
-    case lists:member(<<"_admin">>, Roles) of
-    true -> ok;
-    false -> throw({unauthorized, <<"You are not a server admin.">>})
-    end.
 
 error_info({Error, Reason}) when is_list(Reason) ->
     error_info({Error, ?l2b(Reason)});
