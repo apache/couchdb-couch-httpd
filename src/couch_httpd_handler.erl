@@ -15,10 +15,8 @@
 -include_lib("couch_httpd/include/couch_httpd.hrl").
 
 -export([
-    start_link/0,
-    start_link/1,
     start_link/2,
-    stop/0
+    stop/1
 ]).
 
 -export([
@@ -40,22 +38,19 @@
     resp=nil
 }).
 
-start_link() ->
-    start_link(http).
-start_link(http) ->
-    Port = config:get("chttpd", "port", "5984"),
-    start_link(?MODULE, [{port, Port}]);
+start_link(Stack, http) ->
+    start_link(Stack, [{port, Stack:port()}]);
 
-start_link(https) ->
+start_link(Stack, https) ->
     Port = config:get("ssl", "port", "6984"),
 
     Options =
         [{port, Port},
          {ssl, true},
          {ssl_opts, ssl_options()}],
-    start_link(https, Options).
+    start_link(Stack, Options);
 
-start_link(Name, Options) ->
+start_link(Stack, Options) ->
     IP = case config:get("chttpd", "bind_address", "any") of
              "any" -> any;
              Else -> Else
@@ -63,8 +58,8 @@ start_link(Name, Options) ->
     ok = couch_httpd:validate_bind_address(IP),
 
     Options1 = Options ++ [
-        {loop, fun ?MODULE:handle_request/1},
-        {name, Name},
+        {loop, fun(Req) -> ?MODULE:handle_request(Stack, Req) end},
+        {name, Stack:name()},
         {ip, IP}
     ],
     ServerOptsCfg = config:get("chttpd", "server_options", "[]"),
@@ -78,9 +73,9 @@ start_link(Name, Options) ->
         {error, Reason}
     end.
 
-stop() ->
-    catch mochiweb_http:stop(https),
-    mochiweb_http:stop(?MODULE).
+stop(Name) ->
+    catch mochiweb_http:stop(Name),
+    ok.
 
 handle_request(Stack, MochiReq0) ->
     erlang:put(?REWRITE_COUNT, 0),

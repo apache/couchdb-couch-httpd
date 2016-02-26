@@ -15,6 +15,12 @@
 -include_lib("couch_httpd/include/couch_httpd.hrl").
 
 -export([
+    start_link/0,
+    start_link/1,
+    start_link/2
+]).
+
+-export([
     start_response_length/4,
     start_response/3,
     start_chunked_response/3,
@@ -120,6 +126,18 @@
     first_chunk,
     resp=nil
 }).
+
+%% For backward compatibility
+start_link() ->
+    start_link(http).
+
+start_link(Protocol) when is_atom(Protocol) -> %% For backward compatibility
+    couch_http_stack:start_link(Protocol);
+start_link(Stack) ->
+    start_link(Stack, Stack:protocol()).
+
+start_link(Stack, ProtocolOrOptions) ->
+    couch_httpd_handler:start_link(Stack, ProtocolOrOptions).
 
 start_response_length(#httpd{}=Req, Code, Headers, Length) ->
     Resp = handle_response(Req, Code, Headers, Length, start_response_length),
