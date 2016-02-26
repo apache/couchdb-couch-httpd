@@ -22,8 +22,8 @@
 ]).
 
 -export([
-    handle_request/1,
-    handle_request_int/1
+    handle_request/2,
+    handle_request_int/2
 ]).
 
 -export([
@@ -82,20 +82,20 @@ stop() ->
     catch mochiweb_http:stop(https),
     mochiweb_http:stop(?MODULE).
 
-handle_request(MochiReq0) ->
+handle_request(Stack, MochiReq0) ->
     erlang:put(?REWRITE_COUNT, 0),
     MochiReq = couch_httpd_vhost:dispatch_host(MochiReq0),
-    handle_request_int(MochiReq).
+    handle_request_int(Stack, MochiReq).
 
-handle_request_int(MochiReq) ->
+handle_request_int(Stack, MochiReq) ->
     Begin = os:timestamp(),
-    case config:get("chttpd", "socket_options") of
-    undefined ->
-        ok;
-    SocketOptsCfg ->
-        {ok, SocketOpts} = couch_util:parse_term(SocketOptsCfg),
-        ok = mochiweb_socket:setopts(MochiReq:get(socket), SocketOpts)
-    end,
+
+    case Stack:socket_options() of
+        undefined ->
+            ok;
+        SocketOpts ->
+            ok = mochiweb_socket:setopts(MochiReq:get(socket), SocketOpts)
+    end.
 
     % for the path, use the raw path with the query string and fragment
     % removed, but URL quoting left intact
@@ -161,7 +161,8 @@ handle_request_int(MochiReq) ->
         requested_path_parts = [?l2b(couch_httpd:unquote(Part))
                 || Part <- string:tokens(RequestedPath, "/")],
         user_ctx = erlang:erase(pre_rewrite_user_ctx),
-        auth = erlang:erase(pre_rewrite_auth)
+        auth = erlang:erase(pre_rewrite_auth),
+        stack = Stack
     },
 
     % put small token on heap to keep requests synced to backend calls
@@ -393,7 +394,7 @@ is_http(_) ->
     false.
 
 make_uri(Req, Raw) ->
-    Port = integer_to_list(mochiweb_socket_server:get(chttpd, port)),
+    Port = couch_httpd:port(Req),
     Url = list_to_binary(["http://", config:get("httpd", "bind_address"),
                           ":", Port, "/", Raw]),
     Headers = [

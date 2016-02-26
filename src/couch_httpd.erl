@@ -83,7 +83,8 @@
     accepted_encodings/1,
     verify_is_server_admin/1,
     get_delayed_req/1,
-    chunked_response_buffer_size/0
+    chunked_response_buffer_size/0,
+    port/1
 ]).
 
 -export([
@@ -527,6 +528,15 @@ get_delayed_req(Resp) ->
 %% dedicated chunk.
 chunked_response_buffer_size() ->
     config:get_integer("httpd", "chunked_response_buffer", 1490).
+
+port(StackId) when is_atom(StackId) ->
+    integer_to_list(mochiweb_socket_server:get(StackId, port));
+port(#httpd{stack = Stack}) ->
+    Stack:port();
+port(#httpd_resp{stack = Stack}) ->
+    Stack:port();
+port(StackName) when is_list(StackName) ->
+    port(list_to_existing_atom(StackName)).
 
 %% ================
 %% Helper functions

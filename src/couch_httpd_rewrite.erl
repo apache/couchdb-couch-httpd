@@ -53,7 +53,8 @@ get_rules(#doc{body={Props}}) ->
     couch_util:get_value(<<"rewrites">>, Props).
 
 
-do_rewrite(#httpd{mochi_req=MochiReq}=Req, {Props}=Rewrite) when is_list(Props) ->
+do_rewrite(#httpd{mochi_req=MochiReq, stack=Stack}=Req, {Props}=Rewrite)
+        when is_list(Props) ->
     case couch_util:get_value(<<"code">>, Props) of
         undefined ->
             Method = rewrite_method(Req, Rewrite),
@@ -66,7 +67,7 @@ do_rewrite(#httpd{mochi_req=MochiReq}=Req, {Props}=Rewrite) when is_list(Props) 
                                                Headers),
             NewMochiReq:cleanup(),
             couch_log:debug("rewrite to ~p", [Path]),
-            couch_httpd:handle_request_int(NewMochiReq);
+            couch_httpd_handler:handle_request_int(Stack, NewMochiReq);
         Code ->
             couch_httpd:send_response(
                 Req,
@@ -79,7 +80,8 @@ do_rewrite(#httpd{mochi_req=MochiReq}=Req, {Props}=Rewrite) when is_list(Props) 
     end;
 do_rewrite(#httpd{method=Method,
                   path_parts=[_DbName, <<"_design">>, _DesignName, _Rewrite|PathParts],
-                  mochi_req=MochiReq}=Req,
+                  mochi_req=MochiReq,
+                  stack=Stack}=Req,
            Rules) when is_list(Rules) ->
     % create dispatch list from rules
     Prefix = path_prefix(Req),
@@ -123,7 +125,7 @@ do_rewrite(#httpd{method=Method,
     % cleanup, It force mochiweb to reparse raw uri.
     MochiReq1:cleanup(),
 
-    couch_httpd:handle_request_int(MochiReq1).
+    couch_httpd_handler:handle_request_int(Stack, MochiReq1).
 
 
 rewrite_method(#httpd{method=Method}, {Props}) ->
