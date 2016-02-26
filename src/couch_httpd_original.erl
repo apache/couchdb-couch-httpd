@@ -21,7 +21,7 @@
 
 
 -export([send_error/2,send_error/4, send_chunked_error/2]).
--export([handle_request_int/5,validate_referer/1]).
+-export([handle_request_int/5]).
 
 -export([validate_bind_address/1]).
 
@@ -71,7 +71,8 @@
     send_response/4,
     start_chunked_response/3,
     validate_host/1,
-    accepted_encodings/1
+    accepted_encodings/1,
+    validate_referer/1
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -408,19 +409,6 @@ authenticate_request(Req) ->
 increment_method_stats(Method) ->
     couch_stats:increment_counter([couchdb, httpd_request_methods, Method]).
 
-validate_referer(Req) ->
-    Host = host_for_request(Req),
-    Referer = header_value(Req, "Referer", fail),
-    case Referer of
-    fail ->
-        throw({bad_request, <<"Referer header required.">>});
-    Referer ->
-        {_,RefererHost,_,_,_} = mochiweb_util:urlsplit(Referer),
-        if
-            RefererHost =:= Host -> ok;
-            true -> throw({bad_request, <<"Referer header must match host.">>})
-        end
-    end.
 
 
 % Utilities

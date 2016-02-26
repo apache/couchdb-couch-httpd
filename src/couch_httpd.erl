@@ -88,6 +88,7 @@
 
 -export([
     validate_ctype/2,
+    validate_referer/1,
     validate_host/1
 ]).
 
@@ -426,6 +427,20 @@ validate_ctype(Req, Ctype) ->
         [Ctype | _Rest] -> ok;
         _Else ->
             throw({bad_ctype, "Content-Type must be "++Ctype})
+        end
+    end.
+
+validate_referer(Req) ->
+    Host = host_for_request(Req),
+    Referer = header_value(Req, "Referer", fail),
+    case Referer of
+    fail ->
+        throw({bad_request, <<"Referer header required.">>});
+    Referer ->
+        {_,RefererHost,_,_,_} = mochiweb_util:urlsplit(Referer),
+        if
+            RefererHost =:= Host -> ok;
+            true -> throw({bad_request, <<"Referer header must match host.">>})
         end
     end.
 
