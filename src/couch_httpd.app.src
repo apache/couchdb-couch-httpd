@@ -15,13 +15,17 @@
         {vsn, git},
         {modules, []},
         {registered, [couch_httpd_sup]},
-        {applications, [kernel,
-                        stdlib,
-                        crypto,
-                        asn1,
-                        public_key,
-                        ssl,
-                        inets]},
+        {applications, [
+            kernel,
+            stdlib,
+            crypto,
+            asn1,
+            public_key,
+            ssl,
+            inets,
+            couch_epi,
+            config
+        ]},
         {included_applications, [mochiweb]},
         {env, []}
 ]}.
