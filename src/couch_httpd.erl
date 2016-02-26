@@ -702,6 +702,9 @@ error_info(not_implemented) ->
 error_info(timeout) ->
     {500, <<"timeout">>, <<"The request could not be processed in a reasonable"
         " amount of time.">>};
+% Prior art for md5 mismatch resulting in a 400 is from AWS S3
+error_info(md5_mismatch) ->
+    {400, <<"content_md5_mismatch">>, <<"Possible message corruption.">>};
 error_info({timeout, _Reason}) ->
     error_info(timeout);
 error_info({Error, null}) ->

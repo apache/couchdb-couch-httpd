@@ -16,7 +16,6 @@
 -export([start_link/0, start_link/1, stop/0, handle_request/5]).
 
 
--export([error_info/1]).
 -export([make_fun_spec_strs/1]).
 
 
@@ -73,7 +72,8 @@
     accepted_encodings/1,
     validate_referer/1,
     validate_bind_address/1,
-    verify_is_server_admin/1
+    verify_is_server_admin/1,
+    error_info/1
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -414,56 +414,6 @@ increment_method_stats(Method) ->
 
 % Utilities
 
-
-
-
-error_info({Error, Reason}) when is_list(Reason) ->
-    error_info({Error, ?l2b(Reason)});
-error_info(bad_request) ->
-    {400, <<"bad_request">>, <<>>};
-error_info({bad_request, Reason}) ->
-    {400, <<"bad_request">>, Reason};
-error_info({query_parse_error, Reason}) ->
-    {400, <<"query_parse_error">>, Reason};
-% Prior art for md5 mismatch resulting in a 400 is from AWS S3
-error_info(md5_mismatch) ->
-    {400, <<"content_md5_mismatch">>, <<"Possible message corruption.">>};
-error_info({illegal_docid, Reason}) ->
-    {400, <<"illegal_docid">>, Reason};
-error_info(not_found) ->
-    {404, <<"not_found">>, <<"missing">>};
-error_info({not_found, Reason}) ->
-    {404, <<"not_found">>, Reason};
-error_info({not_acceptable, Reason}) ->
-    {406, <<"not_acceptable">>, Reason};
-error_info(conflict) ->
-    {409, <<"conflict">>, <<"Document update conflict.">>};
-error_info({forbidden, Msg}) ->
-    {403, <<"forbidden">>, Msg};
-error_info({unauthorized, Msg}) ->
-    {401, <<"unauthorized">>, Msg};
-error_info(file_exists) ->
-    {412, <<"file_exists">>, <<"The database could not be "
-        "created, the file already exists.">>};
-error_info(request_entity_too_large) ->
-    {413, <<"too_large">>, <<"the request entity is too large">>};
-error_info(request_uri_too_long) ->
-    {414, <<"too_long">>, <<"the request uri is too long">>};
-error_info({bad_ctype, Reason}) ->
-    {415, <<"bad_content_type">>, Reason};
-error_info(requested_range_not_satisfiable) ->
-    {416, <<"requested_range_not_satisfiable">>, <<"Requested range not satisfiable">>};
-error_info({error, {illegal_database_name, Name}}) ->
-    Message = <<"Name: '", Name/binary, "'. Only lowercase characters (a-z), ",
-        "digits (0-9), and any of the characters _, $, (, ), +, -, and / ",
-        "are allowed. Must begin with a letter.">>,
-    {400, <<"illegal_database_name">>, Message};
-error_info({missing_stub, Reason}) ->
-    {412, <<"missing_stub">>, Reason};
-error_info({Error, Reason}) ->
-    {500, couch_util:to_binary(Error), couch_util:to_binary(Reason)};
-error_info(Error) ->
-    {500, <<"unknown_error">>, couch_util:to_binary(Error)}.
 
 error_headers(#httpd{mochi_req=MochiReq}=Req, Code, ErrorStr, ReasonStr) ->
     if Code == 401 ->
