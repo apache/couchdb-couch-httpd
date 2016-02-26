@@ -201,7 +201,7 @@ after_request(HttpReq, HttpResp0) ->
     maybe_log(HttpReq, HttpResp2),
     HttpResp2.
 
-process_request(#httpd{mochi_req = MochiReq} = HttpReq) ->
+process_request(#httpd{mochi_req = MochiReq, stack = Stack} = HttpReq) ->
     HandlerKey =
         case HttpReq#httpd.path_parts of
             [] -> <<>>;
@@ -217,8 +217,7 @@ process_request(#httpd{mochi_req = MochiReq} = HttpReq) ->
         not_preflight ->
             case couch_httpd_auth_plugin:authenticate(HttpReq, fun authenticate_request/1) of
             #httpd{} = Req ->
-                HandlerFun = couch_httpd_handlers:url_handler(
-                    HandlerKey, fun chttpd_db:handle_request/1),
+                HandlerFun = couch_httpd_handlers:url_handler(HandlerKey, Stack),
                 AuthorizedReq = couch_httpd_auth_plugin:authorize(possibly_hack(Req),
                     fun chttpd_auth_request:authorize_request/1),
                 {AuthorizedReq, HandlerFun(AuthorizedReq)};

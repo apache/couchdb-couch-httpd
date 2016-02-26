@@ -15,10 +15,10 @@
 -export([
     url_handler/2,
     db_handler/2,
-    design_handler/2
+    design_handler/2,
+    select/4
 ]).
 
--define(SERVICE_ID, chttpd_handlers).
 
 -include_lib("couch/include/couch_db.hrl").
 
@@ -26,26 +26,29 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-url_handler(HandlerKey, DefaultFun) ->
-    select(collect(url_handler, [HandlerKey]), DefaultFun).
+url_handler(HandlerKey, Stack) ->
+    Stack:url_handler(HandlerKey).
 
-db_handler(HandlerKey, DefaultFun) ->
-    select(collect(db_handler, [HandlerKey]), DefaultFun).
+db_handler(HandlerKey, Stack) ->
+    Stack:db_handler(HandlerKey).
 
-design_handler(HandlerKey, DefaultFun) ->
-    select(collect(design_handler, [HandlerKey]), DefaultFun).
+design_handler(HandlerKey, Stack) ->
+    Stack:design_handler(HandlerKey).
+
+select(ServiceID, Func, HandlerKey, Default) ->
+    select(collect(ServiceID, Func, [HandlerKey]), Default).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-collect(Func, Args) ->
-    Results = do_apply(Func, Args, []),
+collect(ServiceID, Func, Args) ->
+    Results = do_apply(ServiceID, Func, Args, []),
     [HandlerFun || HandlerFun <- Results, HandlerFun /= no_match].
 
-do_apply(Func, Args, Opts) ->
-    Handle = couch_epi:get_handle(?SERVICE_ID),
-    couch_epi:apply(Handle, ?SERVICE_ID, Func, Args, Opts).
+do_apply(ServiceID, Func, Args, Opts) ->
+    Handle = couch_epi:get_handle(ServiceID),
+    couch_epi:apply(Handle, ServiceID, Func, Args, Opts).
 
 select([], Default) ->
     Default;
