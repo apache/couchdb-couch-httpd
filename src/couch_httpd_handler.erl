@@ -159,7 +159,9 @@ handle_request_int(MochiReq) ->
         path_parts = [list_to_binary(couch_httpd:unquote(Part))
                 || Part <- string:tokens(Path, "/")],
         requested_path_parts = [?l2b(couch_httpd:unquote(Part))
-                || Part <- string:tokens(RequestedPath, "/")]
+                || Part <- string:tokens(RequestedPath, "/")],
+        user_ctx = erlang:erase(pre_rewrite_user_ctx),
+        auth = erlang:erase(pre_rewrite_auth)
     },
 
     % put small token on heap to keep requests synced to backend calls
