@@ -120,29 +120,17 @@
     resp=nil
 }).
 
-start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Length) ->
+start_response_length(#httpd{}=Req, Code, Headers, Length) ->
     Resp = handle_response(Req, Code, Headers, Length, start_response_length),
-    case MochiReq:get(method) of
-    'HEAD' -> throw({http_head_abort, Resp});
-    _ -> ok
-    end,
-    {ok, Resp}.
+    maybe_abort_head_request(Req, Resp).
 
-start_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
+start_response(#httpd{}=Req, Code, Headers) ->
     Resp = handle_response(Req, Code, Headers, undefined, start_response),
-    case MochiReq:get(method) of
-        'HEAD' -> throw({http_head_abort, Resp});
-        _ -> ok
-    end,
-    {ok, Resp}.
+    maybe_abort_head_request(Req, Resp).
 
-start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
+start_chunked_response(#httpd{}=Req, Code, Headers) ->
     Resp = handle_response(Req, Code, Headers, chunked, respond),
-    case MochiReq:get(method) of
-    'HEAD' -> throw({http_head_abort, Resp});
-    _ -> ok
-    end,
-    {ok, Resp}.
+    maybe_abort_head_request(Req, Resp).
 
 start_json_response(Req, Code) ->
     start_json_response(Req, Code, []).
@@ -950,6 +938,12 @@ maybe_log_response(Code, Body) when Code >= 400 ->
     couch_log:debug("httpd ~p error response:~n ~s", [Code, Body]);
 maybe_log_response(_, _) ->
     ok.
+
+maybe_abort_head_request(#httpd{mochi_req = MochiReq}, Resp) ->
+    case MochiReq:get(method) of
+        'HEAD' -> throw({http_head_abort, Resp});
+        _ -> {ok, Resp}
+    end.
 
 %%%%%%%% module tests below %%%%%%%%
 
