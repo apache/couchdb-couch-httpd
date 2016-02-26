@@ -120,33 +120,24 @@
     resp=nil
 }).
 
-start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Length) ->
-    log_request(Req, Code),
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers1 = add_headers(Req, Headers0),
-    Resp = MochiReq:start_response_length({Code, Headers1, Length}),
+start_response_length(#httpd{mochi_req=MochiReq}=Req, Code, Headers, Length) ->
+    Resp = handle_response(Req, Code, Headers, Length, start_response_length),
     case MochiReq:get(method) of
     'HEAD' -> throw({http_head_abort, Resp});
     _ -> ok
     end,
     {ok, Resp}.
 
-start_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0) ->
-    log_request(Req, Code),
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers1 = add_headers(Req, Headers0),
-    Resp = MochiReq:start_response({Code, Headers1}),
+start_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
+    Resp = handle_response(Req, Code, Headers, undefined, start_response),
     case MochiReq:get(method) of
         'HEAD' -> throw({http_head_abort, Resp});
         _ -> ok
     end,
     {ok, Resp}.
 
-start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0) ->
-    log_request(Req, Code),
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
-    Headers1 = add_headers(Req, Headers0),
-    Resp = MochiReq:respond({Code, Headers1, chunked}),
+start_chunked_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers) ->
+    Resp = handle_response(Req, Code, Headers, chunked, respond),
     case MochiReq:get(method) of
     'HEAD' -> throw({http_head_abort, Resp});
     _ -> ok
@@ -208,17 +199,15 @@ start_delayed_json_response(Req, Code, Headers, FirstChunk) ->
         headers = Headers,
         first_chunk = FirstChunk}}.
 
-send_response(#httpd{mochi_req=MochiReq}=Req, Code, Headers0, Body) ->
-    log_request(Req, Code),
-    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
+send_response(#httpd{}=Req, Code, Headers, Body) ->
+    Resp = handle_response(Req, Code, Headers, Body, respond),
     if Code >= 500 ->
         couch_log:error("httpd ~p error response:~n ~s", [Code, Body]);
     Code >= 400 ->
         couch_log:debug("httpd ~p error response:~n ~s", [Code, Body]);
     true -> ok
     end,
-    Headers1 = add_headers(Req, Headers0),
-    {ok, MochiReq:respond({Code, Headers1, Body})}.
+    {ok, Resp}.
 
 send_json(Req, Value) ->
     send_json(Req, 200, Value).
@@ -951,6 +940,17 @@ validate_callback([Char | Rest]) ->
             throw({bad_request, invalid_callback})
     end,
     validate_callback(Rest).
+
+handle_response(Req, Code, Headers0, Args, Type) ->
+    log_request(Req, Code),
+    couch_stats:increment_counter([couchdb, httpd_status_codes, Code]),
+    Headers1 = add_headers(Req, Headers0),
+    respond_(Req, Code, Headers1, Args, Type).
+
+respond_(#httpd{mochi_req = MochiReq}, Code, Headers, _Args, start_response) ->
+    MochiReq:start_response({Code, Headers});
+respond_(#httpd{mochi_req = MochiReq}, Code, Headers, Args, Type) ->
+    MochiReq:Type({Code, Headers, Args}).
 
 %%%%%%%% module tests below %%%%%%%%
 
