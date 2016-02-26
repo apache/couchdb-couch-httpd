@@ -19,7 +19,6 @@
 -export([make_fun_spec_strs/1]).
 
 
--export([send_chunked_error/2]).
 -export([handle_request_int/5]).
 
 
@@ -75,7 +74,8 @@
     verify_is_server_admin/1,
     error_info/1,
     send_error/2,
-    send_error/4
+    send_error/4,
+    send_chunked_error/2
 ]).
 
 -define(HANDLER_NAME_IN_MODULE_POS, 6).
@@ -416,13 +416,6 @@ increment_method_stats(Method) ->
 
 % Utilities
 
-send_chunked_error(Resp, Error) ->
-    {Code, ErrorStr, ReasonStr} = error_info(Error),
-    JsonError = {[{<<"code">>, Code},
-        {<<"error">>,  ErrorStr},
-        {<<"reason">>, ReasonStr}]},
-    send_chunk(Resp, ?l2b([$\n,?JSON_ENCODE(JsonError),$\n])),
-    last_chunk(Resp).
 
 
 
