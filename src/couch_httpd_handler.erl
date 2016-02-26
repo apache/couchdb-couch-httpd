@@ -90,12 +90,7 @@ handle_request(Stack, MochiReq0) ->
 handle_request_int(Stack, MochiReq) ->
     Begin = os:timestamp(),
 
-    case Stack:socket_options() of
-        undefined ->
-            ok;
-        SocketOpts ->
-            ok = mochiweb_socket:setopts(MochiReq:get(socket), SocketOpts)
-    end.
+    set_socket_options(Stack, MochiReq),
 
     % for the path, use the raw path with the query string and fragment
     % removed, but URL quoting left intact
@@ -485,3 +480,11 @@ ssl_options() ->
             end
     end,
     ServerOpts ++ ClientOpts.
+
+set_socket_options(Stack, MochiReq) ->
+    case Stack:socket_options() of
+        undefined ->
+            ok;
+        SocketOpts ->
+            ok = mochiweb_socket:setopts(MochiReq:get(socket), SocketOpts)
+    end.
