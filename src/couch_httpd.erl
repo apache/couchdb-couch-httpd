@@ -953,3 +953,44 @@ validate_callback([Char | Rest]) ->
             throw({bad_request, invalid_callback})
     end,
     validate_callback(Rest).
+
+%%%%%%%% module tests below %%%%%%%%
+
+-ifdef(TEST).
+-include_lib("couch/include/couch_eunit.hrl").
+
+maybe_add_default_headers_test_() ->
+    DummyRequest = [],
+    NoCache = {"Cache-Control", "no-cache"},
+    ApplicationJson = {"Content-Type", "application/json"},
+    % couch_httpd uses process dictionary to check if currently in a
+    % json serving method. Defaults to 'application/javascript' otherwise.
+    % Therefore must-revalidate and application/javascript should be added
+    % by couch_httpd if such headers are not present
+    MustRevalidate = {"Cache-Control", "must-revalidate"},
+    ApplicationJavascript = {"Content-Type", "application/javascript"},
+    Cases = [
+        {[],
+         [MustRevalidate, ApplicationJavascript],
+          "Should add Content-Type and Cache-Control to empty heaeders"},
+
+        {[NoCache],
+         [NoCache, ApplicationJavascript],
+          "Should add Content-Type only if Cache-Control is present"},
+
+        {[ApplicationJson],
+         [MustRevalidate, ApplicationJson],
+          "Should add Cache-Control if Content-Type is present"},
+
+        {[NoCache, ApplicationJson],
+         [NoCache, ApplicationJson],
+          "Should not add headers if Cache-Control and Content-Type are there"}
+    ],
+    Tests = lists:map(fun({InitialHeaders, ProperResult, Desc}) ->
+        {Desc,
+        ?_assertEqual(ProperResult,
+         maybe_add_default_headers(DummyRequest, InitialHeaders))}
+    end, Cases),
+    {"Tests adding default headers", Tests}.
+
+-endif.
