@@ -215,11 +215,10 @@ process_request(#httpd{mochi_req = MochiReq, stack = Stack} = HttpReq) ->
         check_request_uri_length(RawUri),
         case couch_httpd_cors:maybe_handle_preflight_request(HttpReq) of
         not_preflight ->
-            case couch_httpd_auth_plugin:authenticate(HttpReq, fun authenticate_request/1) of
+            case couch_httpd_auth_plugin:authenticate(HttpReq) of
             #httpd{} = Req ->
                 HandlerFun = couch_httpd_handlers:url_handler(HandlerKey, Stack),
-                AuthorizedReq = couch_httpd_auth_plugin:authorize(possibly_hack(Req),
-                    fun chttpd_auth_request:authorize_request/1),
+                AuthorizedReq = couch_httpd_auth_plugin:authorize(possibly_hack(Req)),
                 {AuthorizedReq, HandlerFun(AuthorizedReq)};
             Response ->
                 {HttpReq, Response}
@@ -395,14 +394,6 @@ extract_cookie(#httpd{mochi_req = MochiReq}) ->
             "AuthSession=" ++ AuthSession
     end.
 %%% end hack
-
-authenticate_request(Req) ->
-    AuthenticationFuns = [
-        {<<"cookie">>, fun couch_httpd_auth_plugin:cookie_authentication_handler/1},
-        {<<"default">>, fun couch_httpd_auth_plugin:default_authentication_handler/1},
-        {<<"local">>, fun couch_httpd_auth_plugin:party_mode_handler/1} %% should be last
-    ],
-    authenticate_request(Req, chttpd_auth_cache, AuthenticationFuns).
 
 authenticate_request(#httpd{} = Req0, AuthModule, AuthFuns) ->
     Req = Req0#httpd{

@@ -12,8 +12,8 @@
 
 -module(couch_httpd_auth_plugin).
 
--export([authenticate/2]).
--export([authorize/2]).
+-export([authenticate/1]).
+-export([authorize/1]).
 
 -export([default_authentication_handler/1]).
 -export([cookie_authentication_handler/1]).
@@ -23,17 +23,19 @@
 
 -include_lib("couch/include/couch_db.hrl").
 
--define(SERVICE_ID, chttpd_auth).
+-define(SERVICE_ID, couch_httpd_auth).
 
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-authenticate(HttpReq, Default) ->
+authenticate(HttpReq) ->
+    Default = fun(#httpd{stack = Stack} = Req) -> Stack:authenticate(Req) end,
     maybe_handle(authenticate, [HttpReq], Default).
 
-authorize(HttpReq, Default) ->
+authorize(HttpReq) ->
+    Default = fun(#httpd{stack = Stack} = Req) -> Stack:authorize(Req) end,
     maybe_handle(authorize, [HttpReq], Default).
 
 
@@ -41,11 +43,11 @@ authorize(HttpReq, Default) ->
 %% Default callbacks
 %% ------------------------------------------------------------------
 
-default_authentication_handler(Req) ->
-    couch_httpd_auth:default_authentication_handler(Req, chttpd_auth_cache).
+default_authentication_handler(#httpd{auth_module = AuthModule} = Req) ->
+    couch_httpd_auth:default_authentication_handler(Req, AuthModule).
 
-cookie_authentication_handler(Req) ->
-    couch_httpd_auth:cookie_authentication_handler(Req, chttpd_auth_cache).
+cookie_authentication_handler(#httpd{auth_module = AuthModule} = Req) ->
+    couch_httpd_auth:cookie_authentication_handler(Req, AuthModule).
 
 party_mode_handler(Req) ->
     case config:get("chttpd", "require_valid_user", "false") of
@@ -60,8 +62,8 @@ party_mode_handler(Req) ->
         end
     end.
 
-handle_session_req(Req) ->
-    couch_httpd_auth:handle_session_req(Req, chttpd_auth_cache).
+handle_session_req(#httpd{auth_module = AuthModule} = Req) ->
+    couch_httpd_auth:handle_session_req(Req, AuthModule).
 
 
 %% ------------------------------------------------------------------
