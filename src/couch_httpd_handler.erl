@@ -51,19 +51,14 @@ start_link(Stack, https) ->
     start_link(Stack, Options);
 
 start_link(Stack, Options) ->
-    IP = case config:get("chttpd", "bind_address", "any") of
-             "any" -> any;
-             Else -> Else
-         end,
-    ok = couch_httpd:validate_bind_address(IP),
+    {IP, ServerOpts} = get_stack_config(Stack),
 
     Options1 = Options ++ [
         {loop, fun(Req) -> ?MODULE:handle_request(Stack, Req) end},
         {name, Stack:name()},
         {ip, IP}
     ],
-    ServerOptsCfg = config:get("chttpd", "server_options", "[]"),
-    {ok, ServerOpts} = couch_util:parse_term(ServerOptsCfg),
+
     Options2 = lists:keymerge(1, lists:sort(Options1), lists:sort(ServerOpts)),
     case mochiweb_http:start(Options2) of
     {ok, Pid} ->
@@ -483,3 +478,8 @@ set_socket_options(Stack, MochiReq) ->
         SocketOpts ->
             ok = mochiweb_socket:setopts(MochiReq:get(socket), SocketOpts)
     end.
+
+get_stack_config(Stack) ->
+    IP = Stack:bind_address(),
+    ok = couch_httpd:validate_bind_address(IP),
+    {IP, Stack:server_options()}.
