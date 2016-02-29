@@ -109,13 +109,13 @@ mock_request(Method, Path, Headers0) ->
     end,
     Headers1 = mochiweb_headers:make(Headers),
     MochiReq = mochiweb_request:new(nil, Method, Path, {1, 1}, Headers1),
-    PathParts = [list_to_binary(chttpd:unquote(Part))
+    PathParts = [list_to_binary(couch_httpd:unquote(Part))
         || Part <- string:tokens(Path, "/")],
     #httpd{method=Method, mochi_req=MochiReq, path_parts=PathParts}.
 
 
 header(#httpd{}=Req, Key) ->
-    chttpd:header_value(Req, Key);
+    couch_httpd:header_value(Req, Key);
 header({mochiweb_response, [_, _, Headers]}, Key) ->
     %% header(Headers, Key);
     mochiweb_headers:get_value(Key, Headers);
@@ -270,25 +270,25 @@ cors_enabled_wildcard_test_() ->
 
 test_no_headers_(OwnerConfig) ->
     Req = mock_request('GET', "/", []),
-    assert_not_preflight_(chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig)).
+    assert_not_preflight_(couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig)).
 
 
 test_no_headers_server_(OwnerConfig) ->
     Req = mock_request('GET', "/", [{"Origin", "http://127.0.0.1"}]),
-    assert_not_preflight_(chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig)).
+    assert_not_preflight_(couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig)).
 
 
 test_no_headers_db_(OwnerConfig) ->
     Headers = [{"Origin", "http://127.0.0.1"}],
     Req = mock_request('GET', "/my_db", Headers),
-    assert_not_preflight_(chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig)).
+    assert_not_preflight_(couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig)).
 
 
 test_incorrect_origin_simple_request_(OwnerConfig) ->
     Req = mock_request('GET', "/", [{"Origin", "http://127.0.0.1"}]),
     [
-        ?_assert(chttpd_cors:is_cors_enabled(OwnerConfig)),
-        assert_not_preflight_(chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig))
+        ?_assert(couch_httpd_cors:is_cors_enabled(OwnerConfig)),
+        assert_not_preflight_(couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig))
     ].
 
 
@@ -299,8 +299,8 @@ test_incorrect_origin_preflight_request_(OwnerConfig) ->
     ],
     Req = mock_request('GET', "/", Headers),
     [
-        ?_assert(chttpd_cors:is_cors_enabled(OwnerConfig)),
-        assert_not_preflight_(chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig))
+        ?_assert(couch_httpd_cors:is_cors_enabled(OwnerConfig)),
+        assert_not_preflight_(couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig))
     ].
 
 
@@ -312,8 +312,8 @@ test_bad_headers_preflight_request_(OwnerConfig) ->
     ],
     Req = mock_request('OPTIONS', "/", Headers),
     [
-        ?_assert(chttpd_cors:is_cors_enabled(OwnerConfig)),
-        assert_not_preflight_(chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig))
+        ?_assert(couch_httpd_cors:is_cors_enabled(OwnerConfig)),
+        assert_not_preflight_(couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig))
     ].
 
 
@@ -324,8 +324,8 @@ test_good_headers_preflight_request_(OwnerConfig) ->
         {"Access-Control-Request-Headers", "accept-language"}
     ],
     Req = mock_request('OPTIONS', "/", Headers),
-    ?assert(chttpd_cors:is_cors_enabled(OwnerConfig)),
-    {ok, Headers1} = chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
+    ?assert(couch_httpd_cors:is_cors_enabled(OwnerConfig)),
+    {ok, Headers1} = couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -342,12 +342,12 @@ test_good_headers_preflight_request_with_custom_config_(OwnerConfig) ->
         {"Access-Control-Request-Headers", "accept-language, extra"}
     ],
     Req = mock_request('OPTIONS', "/", Headers),
-    ?assert(chttpd_cors:is_cors_enabled(OwnerConfig)),
+    ?assert(couch_httpd_cors:is_cors_enabled(OwnerConfig)),
     AllowMethods = couch_util:get_value(
         <<"allow_methods">>, OwnerConfig, ?SUPPORTED_METHODS),
     AllowHeaders = couch_util:get_value(
         <<"allow_headers">>, OwnerConfig, ?SUPPORTED_HEADERS),
-    {ok, Headers1} = chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
+    {ok, Headers1} = couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -364,7 +364,7 @@ test_preflight_request_(OwnerConfig) ->
         {"Access-Control-Request-Method", "GET"}
     ],
     Req = mock_request('OPTIONS', "/", Headers),
-    {ok, Headers1} = chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
+    {ok, Headers1} = couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -379,7 +379,7 @@ test_no_access_control_method_preflight_request_(OwnerConfig) ->
         {"Access-Control-Request-Method", notnil}
     ],
     Req = mock_request('OPTIONS', "/", Headers),
-    assert_not_preflight_(chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig)).
+    assert_not_preflight_(couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig)).
 
 
 test_preflight_request_no_allow_credentials_(OwnerConfig) ->
@@ -388,7 +388,7 @@ test_preflight_request_no_allow_credentials_(OwnerConfig) ->
         {"Access-Control-Request-Method", "GET"}
     ],
     Req = mock_request('OPTIONS', "/", Headers),
-    {ok, Headers1} = chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
+    {ok, Headers1} = couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -403,7 +403,7 @@ test_db_request_(OwnerConfig) ->
     Origin = ?DEFAULT_ORIGIN,
     Headers = [{"Origin", Origin}],
     Req = mock_request('GET', "/my_db", Headers),
-    Headers1 = chttpd_cors:headers(Req, Headers, Origin, OwnerConfig),
+    Headers1 = couch_httpd_cors:headers(Req, Headers, Origin, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -415,7 +415,7 @@ test_db_request_with_custom_config_(OwnerConfig) ->
     Origin = ?DEFAULT_ORIGIN,
     Headers = [{"Origin", Origin}, {"extra", "EXTRA"}],
     Req = mock_request('GET', "/my_db", Headers),
-    Headers1 = chttpd_cors:headers(Req, Headers, Origin, OwnerConfig),
+    Headers1 = couch_httpd_cors:headers(Req, Headers, Origin, OwnerConfig),
     ExposedHeaders = couch_util:get_value(
         <<"exposed_headers">>, OwnerConfig, ?COUCH_HEADERS),
     [
@@ -432,7 +432,7 @@ test_db_preflight_request_(OwnerConfig) ->
         {"Origin", ?DEFAULT_ORIGIN}
     ],
     Req = mock_request('OPTIONS', "/my_db", Headers),
-    {ok, Headers1} = chttpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
+    {ok, Headers1} = couch_httpd_cors:maybe_handle_preflight_request(Req, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -448,7 +448,7 @@ test_db_host_origin_request_(OwnerConfig) ->
         {"Host", "example.com"}
     ],
     Req = mock_request('GET', "/my_db", Headers),
-    Headers1 = chttpd_cors:headers(Req, Headers, Origin, OwnerConfig),
+    Headers1 = couch_httpd_cors:headers(Req, Headers, Origin, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -463,7 +463,7 @@ test_preflight_origin_helper_(OwnerConfig, Origin, ExpectedOrigin) ->
         {"Access-Control-Request-Method", "GET"}
     ],
     Req = mock_request('OPTIONS', "/", Headers),
-    Headers1 = chttpd_cors:headers(Req, Headers, Origin, OwnerConfig),
+    Headers1 = couch_httpd_cors:headers(Req, Headers, Origin, OwnerConfig),
     [?_assertEqual(ExpectedOrigin,
         header(Headers1, "Access-Control-Allow-Origin"))
     ].
@@ -502,7 +502,7 @@ test_case_sensitive_mismatch_of_allowed_origins_(OwnerConfig) ->
     Origin = "http://EXAMPLE.COM",
     Headers = [{"Origin", Origin}],
     Req = mock_request('GET', "/", Headers),
-    Headers1 = chttpd_cors:headers(Req, Headers, Origin, OwnerConfig),
+    Headers1 = couch_httpd_cors:headers(Req, Headers, Origin, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -515,7 +515,7 @@ test_db_request_credentials_header_off_(OwnerConfig) ->
     Origin = ?DEFAULT_ORIGIN,
     Headers = [{"Origin", Origin}],
     Req = mock_request('GET', "/", Headers),
-    Headers1 = chttpd_cors:headers(Req, Headers, Origin, OwnerConfig),
+    Headers1 = couch_httpd_cors:headers(Req, Headers, Origin, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
@@ -528,7 +528,7 @@ test_db_request_credentials_header_on_(OwnerConfig) ->
     Origin = ?DEFAULT_ORIGIN,
     Headers = [{"Origin", Origin}],
     Req = mock_request('GET', "/", Headers),
-    Headers1 = chttpd_cors:headers(Req, Headers, Origin, OwnerConfig),
+    Headers1 = couch_httpd_cors:headers(Req, Headers, Origin, OwnerConfig),
     [
         ?_assertEqual(?DEFAULT_ORIGIN,
             header(Headers1, "Access-Control-Allow-Origin")),
