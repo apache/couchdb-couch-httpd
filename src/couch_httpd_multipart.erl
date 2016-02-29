@@ -21,6 +21,10 @@
     num_mp_writers/1
 ]).
 
+-export([
+    parse_multipart_request/3
+]).
+
 -include_lib("couch/include/couch_db.hrl").
 
 decode_multipart_stream(ContentType, DataFun, Ref) ->
