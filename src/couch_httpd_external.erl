@@ -23,7 +23,7 @@
 
 % handle_external_req/2
 % for the old type of config usage:
-% _external = {chttpd_external, handle_external_req}
+% _external = {couch_httpd_external, handle_external_req}
 % with urls like
 % /db/_external/action/design/name
 handle_external_req(#httpd{
@@ -37,7 +37,7 @@ handle_external_req(Req, _) ->
 
 % handle_external_req/3
 % for this type of config usage:
-% _action = {chttpd_external, handle_external_req, <<"action">>}
+% _action = {couch_httpd_external, handle_external_req, <<"action">>}
 % with urls like
 % /db/_action/design/name
 handle_external_req(HttpReq, Db, Name) ->
