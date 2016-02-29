@@ -15,7 +15,7 @@
 
 -include_lib("couch/include/couch_db.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include_lib("chttpd/include/chttpd_cors.hrl").
+-include_lib("couch_httpd/include/couch_httpd_cors.hrl").
 
 
 -define(DEFAULT_ORIGIN, "http://example.com").
