@@ -11,35 +11,29 @@
 % the License.
 
 -module(couch_httpd_config_listener).
--vsn(2).
+-vsn(3).
 -behaviour(config_listener).
 
 % public interface
--export([subscribe/0]).
+-export([subscribe/2]).
 
 % config_listener callback
 -export([handle_config_change/5, handle_config_terminate/3]).
 
-subscribe() ->
-    Settings = [
-        {bind_address, config:get("chttpd", "bind_address")},
-        {port, config:get("chttpd", "port")},
-        {backlog, config:get("chttpd", "backlog")},
-        {server_options, config:get("chttpd", "server_options")}
-    ],
-    ok = config:listen_for_changes(?MODULE, Settings),
+subscribe(Stack, Settings) ->
+    io:format(user, "Listen for changes: ~p", [{Stack, get_config(Settings)}]),
+    ok = config:listen_for_changes(?MODULE, {Stack, get_config(Settings)}),
     ok.
 
-handle_config_change("chttpd", "bind_address", Value, _, Settings) ->
-    maybe_replace(bind_address, Value, Settings);
-handle_config_change("chttpd", "port", Value, _, Settings) ->
-    maybe_replace(port, Value, Settings);
-handle_config_change("chttpd", "backlog", Value, _, Settings) ->
-    maybe_replace(backlog, Value, Settings);
-handle_config_change("chttpd", "server_options", Value, _, Settings) ->
-    maybe_replace(server_options, Value, Settings);
-handle_config_change(_, _, _, _, Settings) ->
-    {ok, Settings}.
+handle_config_change(Section, Key, Value, _, {Stack, Settings}) ->
+    Id = {Section, Key},
+    case couch_util:get_value(Id, Settings, not_found) of
+        not_found -> {ok, {Stack, Settings}};
+        Value -> {ok, {Stack, Settings}};
+        _ ->
+            Stack:stop(),
+            {ok, {Stack, lists:keyreplace(Id, 1, Settings, {Id, Value})}}
+    end.
 
 handle_config_terminate(_, stop, _) -> ok;
 handle_config_terminate(_Server, _Reason, State) ->
@@ -49,11 +43,6 @@ handle_config_terminate(_Server, _Reason, State) ->
     end).
 
 % private
-maybe_replace(Key, Value, Settings) ->
-    case couch_util:get_value(Key, Settings) of
-    Value ->
-        {ok, Settings};
-    _ ->
-        couch_httpd:stop(),
-        {ok, lists:keyreplace(Key, 1, Settings, {Key, Value})}
-    end.
+
+get_config(Settings) ->
+    [{Id, config:get(Section, Key)} || {Section, Key} = Id <- Settings].
