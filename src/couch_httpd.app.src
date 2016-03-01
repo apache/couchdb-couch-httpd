@@ -11,7 +11,7 @@
 % the License.
 
 {application, couch_httpd, [
-        {description, "CouchDB HTTP API"},
+        {description, "CouchDB HTTP Stack"},
         {vsn, git},
         {modules, []},
         {registered, [couch_httpd_sup]},
