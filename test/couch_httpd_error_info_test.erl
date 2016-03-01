@@ -163,6 +163,9 @@ error_info_test() ->
         }
     ],
 
+    meck:new(couch_httpd_plugin, [passthrow]),
+    meck:expect(couch_httpd_plugin, handle_error, fun(E) -> E end),
     lists:foreach(fun({Arg, Result}) ->
-        ?assertEqual(Result, apply(chttpd, error_info, [Arg]))
-    end, ArgResult).
+        ?assertEqual(Result, apply(couch_httpd, error_info, [Arg]))
+    end, ArgResult),
+    meck:unload(couch_httpd_plugin).
