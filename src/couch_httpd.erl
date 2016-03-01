@@ -584,10 +584,7 @@ send(Resp, Data) ->
 
 
 send_chunk(Resp, Data) ->
-    case iolist_size(Data) of
-        0 -> ok; % do nothing
-        _ -> Resp:write_chunk(Data)
-    end,
+    Resp:write_chunk(Data),
     {ok, Resp}.
 
 last_chunk(Resp) ->
