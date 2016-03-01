@@ -27,5 +27,6 @@
             config
         ]},
         {included_applications, [mochiweb]},
+        {mod, {couch_httpd_app, []}},
         {env, []}
 ]}.
